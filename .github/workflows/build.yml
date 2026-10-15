@@ -1,0 +1,67 @@
+# Builds the plug-in on every push and pull request. Pushing a version tag (v1.2.3)
+# also publishes a GitHub Release with the packaged plug-in attached.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Version
+        id: version
+        run: |
+          # a release tag sets the version; otherwise use the one in the project file
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/StairsPlugin/StairsPlugin.csproj)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: dotnet build src/StairsPlugin/StairsPlugin.csproj -c Release -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Package
+        run: |
+          name="Stairs-${{ steps.version.outputs.version }}"
+          mkdir -p "dist/$name"
+          cp src/StairsPlugin/bin/Release/StairsPlugin.dll "dist/$name/Stairs.rhp"
+          cp LICENSE "dist/$name/LICENSE.txt"
+          sed "s/VERSION/${{ steps.version.outputs.version }}/" packaging/INSTALL.txt > "dist/$name/INSTALL.txt"
+          (cd dist && zip -r "$name.zip" "$name")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Stairs-${{ steps.version.outputs.version }}
+          path: dist/Stairs-${{ steps.version.outputs.version }}.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="Stairs-${{ steps.version.outputs.version }}"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            # the tag was moved: replace the download and the description of the existing release
+            gh release upload "$GITHUB_REF_NAME" "dist/$name.zip" --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file "dist/$name/INSTALL.txt"
+          else
+            gh release create "$GITHUB_REF_NAME" "dist/$name.zip" \
+              --title "Stairs ${{ steps.version.outputs.version }}" \
+              --notes-file "dist/$name/INSTALL.txt" --verify-tag
+          fi

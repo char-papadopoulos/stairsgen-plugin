@@ -1,0 +1,17 @@
+# build output
+bin/
+obj/
+
+# IDE and OS files
+.idea/
+.vs/
+*.user
+.DS_Store
+
+# local Claude Code state
+.claude/.cc-writes/
+.claude/settings.local.json
+# packaged release files (written by the Build workflow)
+dist/
+# local-only images
+images/logo.jpg

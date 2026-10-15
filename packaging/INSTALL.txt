@@ -1,0 +1,40 @@
+Stairs VERSION for Rhino 8
+==========================
+
+This download contains the plug-in (Stairs.rhp), these instructions and the
+license. The same Stairs.rhp works on macOS and on Windows.
+
+
+REQUIREMENTS
+
+- Rhino 8, Service Release 35 or later.
+- Rhino's default .NET runtime. On Windows: if Rhino was ever switched to
+  .NET Framework with the SetDotNetRuntime command, switch it back.
+
+
+INSTALL ON MACOS
+
+1. Unzip the download.
+2. Copy Stairs.rhp into this folder:
+   ~/Library/Application Support/McNeel/Rhinoceros/8.0/MacPlugIns/
+   (In Finder, choose Go > Go to Folder... and paste the path.)
+3. Restart Rhino.
+
+
+INSTALL ON WINDOWS
+
+1. Unzip the download. Keep Stairs.rhp in a permanent folder: Rhino loads it
+   from there every time it starts.
+2. If Windows marks the file as downloaded, right-click Stairs.rhp, choose
+   Properties, tick Unblock and click OK.
+3. Start Rhino 8 and drag Stairs.rhp onto the Rhino window.
+   (Or choose Tools > Options > Plug-ins > Install... and pick Stairs.rhp.)
+
+
+USE
+
+Run the StairsGen command and select a flat curve. The PlugInManager command
+lists Stairs once it is loaded.
+
+To update: close Rhino, replace Stairs.rhp with the new one, and start Rhino
+again.

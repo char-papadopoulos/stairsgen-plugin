@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <RootNamespace>Stairs</RootNamespace>
+    <AssemblyName>StairsPlugin</AssemblyName>
+    <Nullable>disable</Nullable>
+    <LangVersion>10</LangVersion>
+    <Version>1.0.0</Version>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RhinoCommon" Version="8.35.*" />
+    <PackageReference Include="Eto.Forms" Version="2.11.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\icons\*.png" LogicalName="%(Filename)%(Extension)" />
+    <EmbeddedResource Include="assets\icons\StairsPlugin.ico" LogicalName="StairsPlugin.ico" />
+  </ItemGroup>
+</Project>
