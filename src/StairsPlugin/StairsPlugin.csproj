@@ -5,7 +5,7 @@
     <AssemblyName>StairsPlugin</AssemblyName>
     <Nullable>disable</Nullable>
     <LangVersion>10</LangVersion>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -14,7 +14,12 @@
     <PackageReference Include="Eto.Forms" Version="2.11.0" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="assets\icons\*.png" LogicalName="%(Filename)%(Extension)" />
+    <!-- macOS AppleDouble files (._name) appear when a folder is copied to another file system -->
+    <Compile Remove="**\._*" />
+    <EmbeddedResource Remove="**\._*" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\icons\*.png" Exclude="assets\icons\._*" LogicalName="%(Filename)%(Extension)" />
     <EmbeddedResource Include="assets\icons\StairsPlugin.ico" LogicalName="StairsPlugin.ico" />
   </ItemGroup>
 </Project>

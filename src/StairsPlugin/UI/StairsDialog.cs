@@ -61,6 +61,10 @@ namespace Stairs.UI
         private readonly int _decimals; // decimals shown for lengths in model units
         private readonly System.Globalization.NumberFormatInfo _numberFormat = FieldNumberFormat();
 
+        private TableLayout _settings;   // the setting sections inside the scroll area
+        private Scrollable _settingsScroll;
+        private TableLayout _bottom;     // status line and buttons, always visible
+
         private Guid _curveId;       // document object the curve comes from (empty: not tracked)
         private bool _refreshPending; // a curve change is waiting to be picked up
 
@@ -83,7 +87,7 @@ namespace Stairs.UI
             _decimals = Math.Max(0, (int)Math.Round(-Math.Log10(_cm)));
 
             Title = "Stairs";
-            Resizable = false;
+            Resizable = true; // lets the user adjust it where the screen is small; the content scrolls
             Maximizable = false;
             Minimizable = false;
             ShowInTaskbar = false;
@@ -97,6 +101,77 @@ namespace Stairs.UI
             RhinoDoc.DeleteRhinoObject += OnObjectEvent;
             RhinoDoc.UndeleteRhinoObject += OnObjectEvent;
             Closed += (s, e) => OnClosedHandler();
+        }
+
+        // Room taken by the title bar, window borders and a margin to the screen edge (in Eto's
+        // device-independent units, so it holds at any display scaling).
+        private const int WindowChrome = 80;
+        private const int ScrollBarAllowance = 24;
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            FitToScreen();
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            KeepOnScreen();
+        }
+
+        private Screen CurrentScreen()
+        {
+            try { return Owner?.Screen ?? Screen.PrimaryScreen; }
+            catch (Exception) { return Screen.PrimaryScreen; }
+        }
+
+        /// <summary>
+        /// Sizes the window to its content, but never taller than the screen's usable area; what
+        /// does not fit scrolls. Measured here, not left to the window system, because at high
+        /// display scaling (e.g. 4K at 200%) the content can be larger than the screen.
+        /// </summary>
+        private void FitToScreen()
+        {
+            try
+            {
+                var screen = CurrentScreen();
+                if (screen == null) return;
+                var limit = new SizeF(float.PositiveInfinity, float.PositiveInfinity);
+                var settings = _settings.GetPreferredSize(limit);
+                var bottom = _bottom.GetPreferredSize(limit);
+                float wantedHeight = settings.Height + bottom.Height + 8 + 2; // frame spacing, rounding slack
+                float maxHeight = Math.Max(300, screen.WorkingArea.Height - WindowChrome);
+                bool scrolls = wantedHeight > maxHeight;
+                float width = Math.Max(settings.Width, bottom.Width) + (scrolls ? ScrollBarAllowance : 2);
+                float maxWidth = Math.Max(300, screen.WorkingArea.Width - 40);
+                ClientSize = new Size((int)Math.Ceiling(Math.Min(width, maxWidth)),
+                                      (int)Math.Ceiling(Math.Min(wantedHeight, maxHeight)));
+                MinimumSize = new Size(300, 240);
+            }
+            catch (Exception)
+            {
+                // measuring is best effort; the window then sizes itself to its content
+            }
+        }
+
+        /// <summary>Moves the window back inside the usable area of its screen if it sticks out.</summary>
+        private void KeepOnScreen()
+        {
+            try
+            {
+                var screen = Screen.FromRectangle(new RectangleF(Location, Size)) ?? CurrentScreen();
+                if (screen == null) return;
+                var work = screen.WorkingArea;
+                float x = Math.Max(work.Left, Math.Min(Location.X, work.Right - Size.Width));
+                float y = Math.Max(work.Top, Math.Min(Location.Y, work.Bottom - Size.Height));
+                var target = new Eto.Drawing.Point((int)Math.Round(x), (int)Math.Round(y));
+                if (target != Location) Location = target;
+            }
+            catch (Exception)
+            {
+                // positioning is best effort
+            }
         }
 
         private void OnClosedHandler()
@@ -301,10 +376,14 @@ namespace Stairs.UI
             restListRow.Items.Add(_restList);
             restListRow.Items.Add(_removeRest);
 
-            var footer = new TableLayout { Spacing = new Size(6, 0) };
-            footer.Rows.Add(new TableRow(_livePreview, new TableCell(null, true), createBtn, cancelBtn));
+            // Buttons keep their natural height: in a stack nothing stretches them to fill leftover space
+            var footer = new StackLayout { Orientation = Orientation.Horizontal, Spacing = 6, VerticalContentAlignment = VerticalAlignment.Center };
+            footer.Items.Add(_livePreview);
+            footer.Items.Add(new StackLayoutItem(new Panel(), true));
+            footer.Items.Add(createBtn);
+            footer.Items.Add(cancelBtn);
 
-            var root = new TableLayout { Padding = new Padding(12), Spacing = new Size(0, 8) };
+            var root = new TableLayout { Padding = new Padding(12, 12, 12, 0), Spacing = new Size(0, 8) };
             root.Rows.Add(Section("Curve",
                 Row(RowLabel("The curve is the"), _role),
                 Row(RowLabel(""), pickBtn, flipBtn)));
@@ -328,9 +407,19 @@ namespace Stairs.UI
                 Row(RowLabel("Side"), _railSide),
                 Row(RowLabel("Type"), _railType),
                 Row(RowLabel("Height"), _railHeight)));
-            root.Rows.Add(new TableLayout(new TableRow(_status, new TableCell(null, true)))); // left-aligned
-            root.Rows.Add(footer);
-            Content = root;
+
+            // The settings scroll; the status line and the buttons stay in view below them, so
+            // a window limited by the screen (high resolution, large display scaling) loses nothing.
+            _settings = root;
+            _settingsScroll = new Scrollable { Border = BorderType.None, Content = root };
+            _bottom = new TableLayout { Padding = new Padding(12, 0, 12, 12), Spacing = new Size(0, 8) };
+            _bottom.Rows.Add(new TableLayout(new TableRow(_status, new TableCell(null, true)))); // left-aligned
+            _bottom.Rows.Add(footer);
+
+            var frame = new TableLayout { Spacing = new Size(0, 8) };
+            frame.Rows.Add(new TableRow(_settingsScroll) { ScaleHeight = true });
+            frame.Rows.Add(_bottom);
+            Content = frame;
 
             _depthMode.SelectedIndexChanged += (s, e) => { _depth.Enabled = DepthMode == Core.TreadDepthMode.Custom; Rebuild(); };
             _steps.ValueChanged += (s, e) => StepsChanged();
