@@ -5,7 +5,7 @@
     <AssemblyName>StairsPlugin</AssemblyName>
     <Nullable>disable</Nullable>
     <LangVersion>10</LangVersion>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>

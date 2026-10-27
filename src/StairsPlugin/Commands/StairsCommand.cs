@@ -3,7 +3,10 @@ using Rhino.Commands;
 
 namespace Stairs.Commands
 {
-    /// <summary>Creates stairs along a flat curve. Opens a modeless settings dialog with live preview.</summary>
+    /// <summary>
+    /// Creates stairs along a flat curve: click points along the stair, or select a curve. Opens a
+    /// modeless settings dialog with live preview.
+    /// </summary>
     [System.Runtime.InteropServices.Guid("1EB5AD2F-57FF-4855-9641-9015E2DDDB38")]
     public class StairsCommand : Rhino.Commands.Command
     {
@@ -32,20 +35,10 @@ namespace Stairs.Commands
             options.BalusterSpacing = 30 * cm;
             options.NumberStyle = doc.DimStyles.Current;
 
-            var go = new Rhino.Input.Custom.GetObject();
-            go.SetCommandPrompt("Select stair curve (outer, inner or mid line of the staircase)");
-            go.GeometryFilter = Rhino.DocObjects.ObjectType.Curve;
-            go.EnablePreSelect(true, true);
-            go.Get();
-            if (go.CommandResult() != Result.Success)
-                return go.CommandResult();
-
-            var curve = go.Object(0).Curve();
-            if (curve == null)
-            {
-                RhinoApp.WriteLine("StairsGen: the selected object is not a curve.");
-                return Result.Failure;
-            }
+            // the stair's outer, inner or mid line
+            var got = UI.CurveInput.Get(doc, "stair", UI.CurveInput.Shape.Open, true, out var curve, out var curveId);
+            if (got != Result.Success)
+                return got;
             var bb = curve.GetBoundingBox(true);
             if (bb.Diagonal.Z > doc.ModelAbsoluteTolerance * 10)
             {
@@ -54,7 +47,7 @@ namespace Stairs.Commands
                 return Result.Failure;
             }
 
-            var dialog = new UI.StairsDialog(doc, curve, options, UI.StairsDialog.TrackableId(go.Object(0)));
+            var dialog = new UI.StairsDialog(doc, curve, options, curveId);
             dialog.Owner = Rhino.UI.RhinoEtoApp.MainWindow;
             dialog.Visible = true;
             return Result.Success;

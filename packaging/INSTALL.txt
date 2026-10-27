@@ -33,8 +33,9 @@ INSTALL ON WINDOWS
 
 USE
 
-Run the StairsGen command and select a flat curve. The PlugInManager command
-lists Stairs once it is loaded.
+Run the StairsGen command and click points along the stair (Enter finishes),
+or use its SelectCurve option to pick a flat curve already in the model. The
+PlugInManager command lists Stairs once it is loaded.
 
 To update: close Rhino, replace Stairs.rhp with the new one, and start Rhino
 again.

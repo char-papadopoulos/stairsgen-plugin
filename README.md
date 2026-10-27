@@ -1,6 +1,6 @@
 # Stairs for Rhino 8
 
-**Version 1.1.0**
+**Version 1.1.1**
 
 A Rhino 8 plug-in that builds a complete staircase along a flat curve. Draw
 the curve, set the total height, and the plug-in lays out the steps, the
@@ -39,8 +39,10 @@ adjust it.
 - **Step numbers** placed flat on each tread.
 - **Pyramid width.** Each step can be narrower than the one below, snapped
   to the center, the left side or the right side.
-- **Follows the curve.** Move or edit the curve while the settings window is
-  open and the stair updates with it.
+- **Draw or select the curve.** Click points to draw the stair's line right
+  in the command, or select a curve already in the model.
+- **Follows the curve.** Move or edit a selected curve while the settings
+  window is open and the stair updates with it.
 
 | Winders | Curved |
 |:---:|:---:|
@@ -91,8 +93,13 @@ cp src/StairsPlugin/bin/Release/StairsPlugin.dll "$HOME/Library/Application Supp
 
 ## Usage
 
-Run the `StairsGen` command and select a flat curve. The settings window opens,
-and the preview updates in every viewport as you change a setting.
+Run the `StairsGen` command and click points along the stair: each click adds a
+corner of a polyline, Enter finishes it and **Undo** removes the last point.
+Every point is kept at the first one's height. To use a flat curve already in
+the model instead, choose the **SelectCurve** option, or select the curve before
+running the command; the stair then follows that curve while the settings
+window is open. The settings window opens, and the preview updates in every
+viewport as you change a setting.
 
 ## Development
 
