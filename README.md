@@ -1,6 +1,6 @@
 # Stairs for Rhino 8
 
-**Version 1.0.0**
+**Version 1.1.0**
 
 A Rhino 8 plug-in that builds a complete staircase along a flat curve. Draw
 the curve, set the total height, and the plug-in lays out the steps, the
@@ -21,13 +21,21 @@ adjust it.
   18 cm, so sharp corners get fewer, wider winders.
 - **Autoconfigure.** Give only the total height: it chooses the number of
   steps, sizes the treads so the last step ends exactly at the end of the
-  curve, and adds a rest step after every 15 steps.
+  curve, and adds a rest step after every 15 steps. With square corner
+  landings on, it also puts a landing in every sharp corner and picks the
+  step count whose worst flight comes closest to the comfort rule.
 - **Structure.** A continuous concrete-like slab with a sloped underside, or
   floating planks.
 - **Rest steps** (landings) at any step, as deep as the stair is wide or
   with a custom depth.
+- **Square corner landings** (on by default): a rest step that reaches a
+  sharp corner fills the whole corner, with its edges square to the flights
+  before and after it instead of following the winders. With fitted treads,
+  each flight is fitted to end exactly at its landing. With a fixed tread
+  depth, the landing stretches back along the flight to meet the treads.
 - **Railings** on either or both sides: glass with a metal frame, a metal
-  railing, or a cement wall with a metal handle.
+  railing, or a concrete wall that stops 10 cm below the handrail, with 3 cm
+  metal balusters at most 30 cm apart filling the gap.
 - **Step numbers** placed flat on each tread.
 - **Pyramid width.** Each step can be narrower than the one below, snapped
   to the center, the left side or the right side.

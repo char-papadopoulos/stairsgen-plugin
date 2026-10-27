@@ -237,10 +237,10 @@ def ic_metal():
 
 def ic_cement():
     c = Canvas()
-    c.rect(6, 14, 26, 27, GREY)
-    c.line(5, 8, 27, 8, DARK, 3)          # metal handle on top
-    c.line(6, 14, 6, 8, DARK, 1)
-    c.line(26, 14, 26, 8, DARK, 1)
+    c.rect(6, 18, 26, 27, GREY)           # the wall stops short of the handrail
+    for x in (8, 12, 16, 20, 24):         # balusters fill the gap
+        c.line(x, 18, x, 7, DARK, 1)
+    c.line(5, 7, 27, 7, DARK, 3)          # handrail
     c.line(0, 28, 31, 28, DARK, 2)
     return c
 

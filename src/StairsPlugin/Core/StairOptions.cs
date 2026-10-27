@@ -66,6 +66,7 @@ namespace Stairs.Core
         public Rhino.DocObjects.DimensionStyle NumberStyle = null;
 
         public System.Collections.Generic.List<RestStep> RestSteps = new System.Collections.Generic.List<RestStep>();
+        public bool SquareLandings = true;     // a rest step that reaches a sharp corner fills it, square to both flights
 
         public RailSide Railing = RailSide.None;
         public RailType RailType = RailType.Glass;
@@ -77,6 +78,9 @@ namespace Stairs.Core
         public double PostDiameter = 0.04;
         public double PostSpacing = 1.10;      // max distance between posts (0 -> every step)
         public double RailCementThickness = 0.10;
+        public double RailWallGap = 0.10;      // concrete: open height between the wall and the handrail
+        public double BalusterDiameter = 0.03; // concrete: the bars in that gap
+        public double BalusterSpacing = 0.30;  // concrete: max distance between bars
 
         public double AbsoluteTolerance = 0.01;
 

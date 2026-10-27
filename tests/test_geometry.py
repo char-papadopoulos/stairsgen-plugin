@@ -40,6 +40,7 @@ WIDTH, STEP_H, COMFORT, SLAB_T, PLANK_T = 1.0, 0.17, 0.46, 0.15, 0.04
 MIN_AVG = 0.18  # minimum average tread depth: area / mean nosing length
 MIN_RISER, MAX_RISER, REST_EVERY = 0.12, 0.20, 15  # autoconfigure
 MIN_STEP_WIDTH = 0.30  # pyramid stairs
+GAP, BALUSTER, BALUSTER_SPACING = 0.10, 0.03, 0.30  # concrete railing: open height under the handrail, its bars
 
 
 # --- curves, in metres -----------------------------------------------------------------
@@ -105,6 +106,7 @@ def build_scenarios():
         ("arc left mid glass both", arc(3, 120), {"rail": "both", "rail_type": "glass"}, {}),
         ("arc right mid metal both", arc(3, 120, right=True), {"rail": "both", "rail_type": "metal"}, {}),
         ("arc inner cement both", arc(3, 120), {"role": "inner", "rail": "both", "rail_type": "cement"}, {}),
+        ("spiral cement both", arc(2, 270), {"rail": "both", "rail_type": "cement"}, {}),
         ("arc outer plank", arc(3, 120), {"role": "outer", "structure": "plank"}, {}),
         ("arc right inner plank", arc(3, 120, right=True), {"role": "inner", "structure": "plank"}, {}),
         ("arc flip slab", arc(3, 120), {"flip": True}, {}),
@@ -145,6 +147,14 @@ def build_scenarios():
         ("autoconfigure tall arc", arc(3, 300), {"auto": True, "height": 8.0}, {}),
         ("autoconfigure double acute zigzag", polyline((0, 0), (0, 3), (2.4, 0.4), (2.4, 6), (6, 6)), {"auto": True, "height": 7.0, "rail": "both", "rail_type": "glass"}, {"regular": True}),
         ("autoconfigure long low curve", line(20), {"auto": True, "height": 1.0, "structure": "plank"}, {"regular": True, "comfort": False}),
+        # square corner landings: a rest step that reaches a sharp corner fills it, square to both flights
+        ("square landing inner L fit", polyline((0, 0), (0, 3.5), (2.2, 3.5)), {"role": "inner", "rest": [(11, 0.0)], "mode": "fit", "steps": 17}, {"square_landing": [11], "regular": True}),
+        ("square landing corner comfort", corner(3.5, 90, 3.5), {"rest": [(11, 0.0)], "rail": "both", "rail_type": "glass"}, {"square_landing": [11], "regular": True}),
+        ("square landing corner fit cement", corner(3.5, 90, 3.5), {"rest": [(11, 0.0)], "mode": "fit", "rail": "both", "rail_type": "cement"}, {"square_landing": [11], "regular": True}),
+        ("square landings off", corner(3.5, 90, 3.5), {"rest": [(11, 0.0)], "square": False}, {"fan_landing": [11]}),
+        ("rest step past the corner", corner(3.5, 90, 3.5), {"rest": [(13, 0.0)]}, {"warn": ["starts past the corner"], "fan_landing": [13]}),
+        ("square landing zigzag fit", polyline((0, 0), (0, 3), (2.4, 0.4), (2.4, 6), (6, 6)), {"rest": [(9, 0.0), (15, 0.0)], "mode": "fit", "height": 7.0, "structure": "plank"}, {"square_landing": [9]}),
+        ("autoconfigure zigzag without square landings", polyline((0, 0), (0, 3), (2.4, 0.4), (2.4, 6), (6, 6)), {"auto": True, "height": 7.0, "square": False}, {"regular": True}),
     ]
     # sharp corners: every role, both turn directions, 60/90/135 degrees, rotating rail types
     for i, (role, deg) in enumerate([(r, d) for r in ("mid", "inner", "outer") for d in (90, -90, 60, -60, 135, -135)]):
@@ -231,12 +241,16 @@ try:
         o.PostDiameter = 0.04 * k
         o.PostSpacing = 1.10 * k
         o.RailCementThickness = 0.10 * k
+        o.RailWallGap = GAP * k
+        o.BalusterDiameter = BALUSTER * k
+        o.BalusterSpacing = BALUSTER_SPACING * k
         o.RailHeight = 0.9 * k
         o.Role = enum("CurveRole", opt.get("role", "mid"))
         o.Structure = enum("StairStructure", structure or opt.get("structure", "slab"))
         o.Railing = enum("RailSide", opt.get("rail", "none"))
         o.RailType = enum("RailType", opt.get("rail_type", "glass"))
         o.Flip = opt.get("flip", False)
+        o.SquareLandings = opt.get("square", True)
         o.ShowNumbers = True
         o.NumberStyle = doc.DimStyles.Current
         for number, depth in opt.get("rest", []):
@@ -316,6 +330,26 @@ try:
                         errors.append("%s post on step %d is %.4g from the stair edge, expected the inset %.4g"
                                       % (side_name, st.Number, abs(y - edge), inset)); break
             if posts == 0: errors.append("no railing posts found")
+        if opt.get("rail_type") == "cement":
+            # balusters: plumb bars from one radius inside the wall's top up to the handrail's
+            # centre, never more than the spacing apart along the rail
+            tall = (GAP + BALUSTER / 2 + 0.05 / 2) * k
+            for side_name, pieces in (("left", list(res.RailingLeft)), ("right", list(res.RailingRight))):
+                if not pieces: continue
+                bars = []
+                for b in pieces:
+                    bb = b.GetBoundingBox(True)
+                    if bb.Max.X - bb.Min.X < BALUSTER * k * 1.01 and bb.Max.Y - bb.Min.Y < BALUSTER * k * 1.01:
+                        bars.append(bb)
+                if len(bars) < 2:
+                    errors.append("%d balusters on the %s railing" % (len(bars), side_name)); continue
+                wrong = [bb for bb in bars if abs((bb.Max.Z - bb.Min.Z) - tall) > 1e-6 * k]
+                if wrong:
+                    errors.append("%s baluster %.4g tall, expected %.4g" % (side_name, wrong[0].Max.Z - wrong[0].Min.Z, tall))
+                centres = [((bb.Min.X + bb.Max.X) / 2, (bb.Min.Y + bb.Max.Y) / 2) for bb in bars]
+                gap = max(min(math.hypot(p[0] - q[0], p[1] - q[1]) for q in centres if q is not p) for p in centres)
+                if gap > BALUSTER_SPACING * k * (1 + 1e-6):
+                    errors.append("%s balusters %.4g apart, more than %.4g" % (side_name, gap, BALUSTER_SPACING * k))
         if "pyramid" in opt:
             step_w, side = opt["pyramid"]
             base = opt.get("width", WIDTH) * k
@@ -361,21 +395,62 @@ try:
             end = lay.StartStation + lay.AvailableLength
             if abs(lay_steps[-1].S1 - end) > tol:
                 errors.append("last step ends %.6g before the curve end" % (end - lay_steps[-1].S1))
+        # square corner landings: a rest step that fills a corner, from its start to its end
+        square = opt.get("square", True)
+        corners = list(lay.Corners) if square else []
+        def fills(st, z):
+            return st.IsRest and st.S0 <= z.T0 + tol and st.S1 >= z.T1 - tol
+        def fills_corner(st):
+            return any(fills(st, z) for z in corners)
+        flights = list(lay.FlightDepths) or [regular]
         if opt.get("auto"):
             if not (MIN_RISER * k - 1e-9 <= riser * k <= MAX_RISER * k + 1e-9):
                 errors.append("autoconfigured riser %.6g is outside the riser range" % (riser * k))
-            if exp.get("comfort", True) and abs(riser * k + regular - COMFORT * k) > 0.03 * k:
-                errors.append("autoconfigured riser + tread %.6g is far from the comfort sum" % (riser * k + regular))
-            want_rests = list(range(REST_EVERY, n_total, REST_EVERY))
+            worst = max(flights, key=lambda d: abs(riser * k + d - COMFORT * k))
+            if exp.get("comfort", True) and abs(riser * k + worst - COMFORT * k) > 0.03 * k:
+                errors.append("autoconfigured riser + tread %.6g is far from the comfort sum" % (riser * k + worst))
             got_rests = [st.Number for st in lay_steps if st.IsRest]
-            if got_rests != want_rests:
-                errors.append("rest steps %s, expected %s" % (got_rests, want_rests))
+            if not corners:
+                want_rests = list(range(REST_EVERY, n_total, REST_EVERY))
+                if got_rests != want_rests:
+                    errors.append("rest steps %s, expected %s" % (got_rests, want_rests))
+            else:
+                # a landing in every corner, starting where the corner starts
+                for z in corners:
+                    if not any(fills(st, z) and abs(st.S0 - z.T0) <= tol for st in lay_steps):
+                        errors.append("no square landing in the corner %.4g..%.4g (rests %s)" % (z.T0, z.T1, got_rests)); break
+                run = longest = 0
+                for st in lay_steps:
+                    run = 0 if st.IsRest else run + 1
+                    longest = max(longest, run)
+                if longest > REST_EVERY:
+                    errors.append("%d treads in a row without a rest" % longest)
+                if any(a.IsRest and b.IsRest for a, b in zip(lay_steps, lay_steps[1:])):
+                    errors.append("two landings joined by a single riser (rests %s)" % got_rests)
+        for number in exp.get("square_landing", []):
+            st = next((x for x in lay_steps if x.Number == number), None)
+            if st is None or not st.IsRest or not fills_corner(st):
+                errors.append("rest step %d does not fill a corner square" % number)
+            elif mode == "fit" and not any(fills(st, z) and abs(st.S0 - z.T0) <= tol for z in corners):
+                errors.append("rest step %d does not start where the corner starts" % number)
+        for number in exp.get("fan_landing", []):
+            st = next((x for x in lay_steps if x.Number == number), None)
+            if st is None or not st.IsRest or any(st.S0 <= z.T0 + tol and st.S1 >= z.T1 - tol for z in lay.Corners):
+                errors.append("rest step %d should follow the winders, not fill the corner" % number)
 
         rest = dict(opt.get("rest", []))
         if opt.get("auto"):
-            rest = dict((r, 0.0) for r in range(REST_EVERY, n_total, REST_EVERY))
+            rest = dict((st.Number, 0.0) for st in lay_steps if st.IsRest)
+        # the regular depth of each tread is its flight's: flights end at corner landings
+        flight_of, fi, had = {}, 0, False
+        for st in lay_steps:
+            if st.IsRest and fills_corner(st):
+                if had: fi, had = fi + 1, False
+            elif not st.IsRest:
+                had = True
+            flight_of[st.Number] = flights[min(fi, len(flights) - 1)]
         for i, st in enumerate(lay_steps[:len(areas)]):
-            nominal = ((rest[i + 1] or WIDTH) * k if (i + 1) in rest else max(regular, MIN_AVG * k))
+            nominal = ((rest[i + 1] or WIDTH) * k if (i + 1) in rest else max(flight_of[st.Number], MIN_AVG * k))
             if st.Depth < nominal * (1 - 1e-6):
                 errors.append("tread %d depth %.6g is below the regular %.6g" % (i + 1, st.Depth, nominal))
                 break

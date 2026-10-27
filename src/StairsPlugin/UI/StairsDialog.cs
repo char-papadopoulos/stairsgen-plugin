@@ -44,6 +44,12 @@ namespace Stairs.UI
         private readonly NumericStepper _restDepth = new NumericStepper { Enabled = false };
         private readonly ListBox _restList = new ListBox { Size = new Size(ChoiceWidth, 62) };
         private readonly Button _removeRest = new Button { Text = "Remove", Enabled = false };
+        private readonly CheckBox _squareLandings = new CheckBox
+        {
+            Text = "Square landings at corners",
+            ToolTip = "A rest step that reaches a sharp corner fills the whole corner, with its edges square to the "
+                    + "flights before and after it, instead of following the winder fan.",
+        };
         private readonly DropDown _railSide = new DropDown { Width = FieldWidth + 24 };
         private readonly DropDown _railType = new DropDown { Width = ChoiceWidth };
         private readonly NumericStepper _railHeight = new NumericStepper();
@@ -324,7 +330,7 @@ namespace Stairs.UI
 
             _railType.Items.Add(new ListItem { Text = "Glass with metal frame", Tag = (int)Core.RailType.Glass });
             _railType.Items.Add(new ListItem { Text = "Metal railing", Tag = (int)Core.RailType.Metal });
-            _railType.Items.Add(new ListItem { Text = "Cement wall + metal handle", Tag = (int)Core.RailType.Cement });
+            _railType.Items.Add(new ListItem { Text = "Concrete wall + balusters + handrail", Tag = (int)Core.RailType.Cement });
 
             _depthMode.Items.Add(new ListItem { Text = "Comfort rule", Tag = (int)Core.TreadDepthMode.Comfort });
             _depthMode.Items.Add(new ListItem { Text = "Fit to curve", Tag = (int)Core.TreadDepthMode.FitToCurve });
@@ -358,7 +364,8 @@ namespace Stairs.UI
                 Image = LoadIcon("auto.png"),
                 ToolTip = "Uses only the total height and the curve: picks the number of steps by the comfort rule "
                         + "(riser + tread \u2248 46 cm), fits the treads so the last step ends exactly at the curve end, "
-                        + "and adds a rest step after every " + _o.RestInterval + " steps.",
+                        + "and adds a rest step after every " + _o.RestInterval + " steps. With square landings, "
+                        + "it also puts a landing in every sharp corner.",
             };
             autoBtn.Click += (s, e) => Autoconfigure();
 
@@ -402,7 +409,8 @@ namespace Stairs.UI
                 Row(RowLabel(""), _showNumbers)));
             root.Rows.Add(Section("Rest steps (landings)",
                 Row(RowLabel("At step"), _restNumber, _restCustomDepth, _restDepth, addRest),
-                new TableRow(RowLabel(""), new TableCell(restListRow, true))));
+                new TableRow(RowLabel(""), new TableCell(restListRow, true)),
+                Row(RowLabel(""), _squareLandings)));
             root.Rows.Add(Section("Railings (" + unit + ")",
                 Row(RowLabel("Side"), _railSide),
                 Row(RowLabel("Type"), _railType),
@@ -435,6 +443,7 @@ namespace Stairs.UI
             _depth.ValueChanged += (s, e) => Rebuild();
             _thickness.ValueChanged += (s, e) => Rebuild();
             _showNumbers.CheckedChanged += (s, e) => Rebuild();
+            _squareLandings.CheckedChanged += (s, e) => Rebuild();
             _railHeight.ValueChanged += (s, e) => Rebuild();
             _railSide.SelectedIndexChanged += (s, e) => { RailSideChanged(); Rebuild(); };
             _railType.SelectedIndexChanged += (s, e) => Rebuild();
@@ -495,6 +504,7 @@ namespace Stairs.UI
             _steps.Value = StepCount();
             _structure.SelectedIndex = _o.Structure == Core.StairStructure.Slab ? 0 : 1;
             _showNumbers.Checked = _o.ShowNumbers;
+            _squareLandings.Checked = _o.SquareLandings;
             _railHeight.Value = _o.RailHeight;
             _restDepth.Value = _o.Width;
             SelectByTag(_railSide, (int)_o.Railing);
@@ -528,6 +538,7 @@ namespace Stairs.UI
             if (_o.Structure == Core.StairStructure.Slab) _o.SlabThickness = _thickness.Value;
             else _o.PlankThickness = _thickness.Value;
             _o.ShowNumbers = _showNumbers.Checked == true;
+            _o.SquareLandings = _squareLandings.Checked == true;
             _o.Railing = (Core.RailSide)SelectedIndexTag(_railSide);
             _o.RailType = (Core.RailType)SelectedIndexTag(_railType);
             _o.RailHeight = _railHeight.Value;
@@ -630,6 +641,9 @@ namespace Stairs.UI
             }
             UpdateDerived(layout);
             bool warn = status.Length > 0;
+            if (_info.Length == 0 && layout != null && layout.FlightDepths.Count > 1)
+                _info = "Each flight is fitted to its corner landing: tread depths "
+                      + string.Join(", ", layout.FlightDepths.ConvertAll(Length)) + ".";
             _status.Text = warn ? status : _info;
             _status.TextColor = warn ? WarningColor : Colors.Gray;
             _info = "";
@@ -822,6 +836,7 @@ namespace Stairs.UI
                 s.SetDouble("SlabThickness", _o.SlabThickness);
                 s.SetDouble("PlankThickness", _o.PlankThickness);
                 s.SetBool("ShowNumbers", _o.ShowNumbers);
+                s.SetBool("SquareLandings", _o.SquareLandings);
                 s.SetInteger("RailSide", (int)_o.Railing);
                 s.SetInteger("RailType", (int)_o.RailType);
                 s.SetDouble("RailHeight", _o.RailHeight);
@@ -858,6 +873,7 @@ namespace Stairs.UI
                 o.SlabThickness = Len("SlabThickness", 15);
                 o.PlankThickness = Len("PlankThickness", 4);
                 o.ShowNumbers = s.GetBool("ShowNumbers", o.ShowNumbers);
+                o.SquareLandings = s.GetBool("SquareLandings", o.SquareLandings);
                 o.Railing = (Core.RailSide)s.GetInteger("RailSide", (int)o.Railing);
                 o.RailType = (Core.RailType)s.GetInteger("RailType", (int)o.RailType);
                 o.RailHeight = Len("RailHeight", 90);

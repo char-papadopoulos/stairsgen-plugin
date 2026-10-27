@@ -86,6 +86,7 @@ namespace Stairs.Core
         public double StartStation;      // walk station of the curve start
         public double UsedLength;        // total run consumed on the walking line
         public double AvailableLength;   // walking-line length of the input curve
+        public List<double> FlightDepths = new List<double>(); // fitted tread depth per flight, when square corner landings split the stair
         public List<string> Warnings = new List<string>();
 
         /// <summary>Facets of curved treads and of corner fans turn at most this much.</summary>
@@ -96,6 +97,8 @@ namespace Stairs.Core
         PyramidAlign _align;
         double _minWidth;
         double _minGap; // shortest facet the subdivision may create
+        readonly List<(double Length, double Param)> _kinks = new List<(double, double)>(); // curve kinks: arc length and parameter
+        readonly Dictionary<int, CornerZone> _cornerLandings = new Dictionary<int, CornerZone>(); // rest step number -> corner it fills
 
         public static StairLayout Compute(StairOptions o)
         {
@@ -147,7 +150,7 @@ namespace Stairs.Core
                     layout.TreadDepth = o.DepthOverride;
                     break;
                 case TreadDepthMode.FitToCurve:
-                    layout.TreadDepth = layout.FitTreadDepth(o, n, endStation);
+                    layout.TreadDepth = layout.FitTreadDepth(o, 1, n, layout.StartStation, endStation, endStation);
                     break;
                 default:
                     layout.TreadDepth = ComfortDepth(o, layout.RiserHeight);
@@ -160,6 +163,10 @@ namespace Stairs.Core
                 layout.TreadDepth = o.ComfortSum * 0.5;
                 layout.Warnings.Add("Tread depth must be positive; a default value was used.");
             }
+
+            var regular = new double[n + 1];
+            for (int i = 1; i <= n; i++) regular[i] = layout.TreadDepth;
+            if (o.SquareLandings) layout.SquareCornerLandings(o, n, endStation, regular);
 
             // treads along the walking line
             double s = layout.StartStation;
@@ -179,7 +186,15 @@ namespace Stairs.Core
                         layout.TreadDepth, o.MinAverageDepth));
                     warnedMinimum = true;
                 }
-                double depth = layout.TreadDepthAt(o, i, s, layout.TreadDepth, endStation);
+                double depth = layout.TreadDepthAt(o, i, s, regular[i], endStation);
+                if (layout._cornerLandings.TryGetValue(i, out var corner) && s > corner.T0 + tol)
+                {
+                    // the step that starts at or before the corner would fill it square
+                    var before = layout.Steps.FindLast(x => x.S0 <= corner.T0 + tol);
+                    layout.Warnings.Add(string.Format(
+                        "Rest step {0} starts past the corner, so its front edge follows the winders.{1}",
+                        i, before == null ? "" : string.Format(" A rest step at {0} would fill the corner square.", before.Number)));
+                }
 
                 var step = new StepInfo
                 {
@@ -228,7 +243,11 @@ namespace Stairs.Core
         {
             double depth = regular;
             if (o.RestStepAt(i, out RestStep rs))
+            {
                 depth = rs.Depth > 0 ? rs.Depth : o.Width;
+                // a corner landing runs at least to the square cut line after the corner
+                if (_cornerLandings.TryGetValue(i, out var z)) return Math.Max(s + depth, z.T1) - s;
+            }
             if (depth <= 0) depth = o.Width;
             StepOffsets(i, out double a, out double b);
             return WidenToMinimum(s, depth, o.MinAverageDepth, endStation, a, b);
@@ -251,35 +270,36 @@ namespace Stairs.Core
             }
         }
 
-        /// <summary>Walk station where n treads with the given regular depth end.</summary>
-        double RunEnd(StairOptions o, int n, double regular, double endStation)
+        /// <summary>Walk station where treads first..last end, starting at walk station start with the given regular depth.</summary>
+        double RunEnd(StairOptions o, int first, int last, double start, double regular, double endStation)
         {
-            double s = StartStation;
-            for (int i = 1; i <= n; i++)
+            double s = start;
+            for (int i = first; i <= last; i++)
                 s += TreadDepthAt(o, i, s, regular, endStation);
             return s;
         }
 
         /// <summary>
-        /// Regular tread depth that makes the last of n treads end exactly at the curve end.
-        /// The run grows monotonically with the depth (rest steps and widened treads included),
-        /// so a bracketed regula falsi converges in a few layout passes. When even the
-        /// shortest treads overrun the curve, the minimum depth is returned and the layout
-        /// reports the skipped steps.
+        /// Regular tread depth that makes treads first..last, starting at walk station start,
+        /// end exactly at walk station target: the curve end, or a corner landing. The run
+        /// grows monotonically with the depth (rest steps and widened treads included), so a
+        /// bracketed regula falsi converges in a few layout passes. When even the shortest
+        /// treads overrun the target, the minimum depth is returned and the layout reports
+        /// the skipped steps.
         /// </summary>
-        double FitTreadDepth(StairOptions o, int n, double endStation)
+        double FitTreadDepth(StairOptions o, int first, int last, double start, double target, double endStation)
         {
             double tol = Math.Max(o.AbsoluteTolerance, 1e-9);
             double lo = Math.Max(o.MinAverageDepth, tol * 10);
-            double fLo = RunEnd(o, n, lo, endStation) - endStation;
+            double fLo = RunEnd(o, first, last, start, lo, endStation) - target;
             if (fLo >= 0) return lo;
-            double hi = Math.Max(lo * 2, (endStation - StartStation) / n);
-            double fHi = RunEnd(o, n, hi, endStation) - endStation;
+            double hi = Math.Max(lo * 2, (target - start) / Math.Max(1, last - first + 1));
+            double fHi = RunEnd(o, first, last, start, hi, endStation) - target;
             for (int k = 0; fHi < 0 && k < 60; k++)
             {
                 lo = hi; fLo = fHi;
                 hi *= 2;
-                fHi = RunEnd(o, n, hi, endStation) - endStation;
+                fHi = RunEnd(o, first, last, start, hi, endStation) - target;
             }
             if (fHi < 0) return hi; // only rest steps: the depth does not change the run
             int lastSide = 0;
@@ -287,7 +307,7 @@ namespace Stairs.Core
             {
                 double mid = (lo * fHi - hi * fLo) / (fHi - fLo);
                 if (!(mid > lo && mid < hi)) mid = (lo + hi) / 2;
-                double f = RunEnd(o, n, mid, endStation) - endStation;
+                double f = RunEnd(o, first, last, start, mid, endStation) - target;
                 if (f <= 0 && f > -tol * 1e-3) return mid;
                 if (f < 0)
                 {
@@ -302,15 +322,76 @@ namespace Stairs.Core
                     lastSide = 1;
                 }
             }
-            return lo; // never past the curve end
+            return lo; // never past the target
+        }
+
+        /// <summary>
+        /// Square corner landings: a rest step that reaches into a corner zone covers the whole
+        /// zone, so its edges are the square cut lines of the flights before and after the
+        /// corner instead of fanned ones. With fitted treads every flight is fitted on its own,
+        /// to end exactly where its landing starts; with a fixed tread depth the landing
+        /// stretches back along the flight to where the treads before it end. Refitting moves
+        /// the later steps, so a rest step can come to reach a corner it missed before: the
+        /// search repeats until no new landing turns up.
+        /// </summary>
+        void SquareCornerLandings(StairOptions o, int n, double endStation, double[] regular)
+        {
+            for (int pass = 0; pass < 8; pass++)
+            {
+                // the landings that reach a corner, on the stair as laid out so far
+                int found = _cornerLandings.Count;
+                double s = StartStation;
+                for (int i = 1; i <= n && s < endStation; i++)
+                {
+                    double d = TreadDepthAt(o, i, s, regular[i], endStation);
+                    if (o.RestStepAt(i, out _) && !_cornerLandings.ContainsKey(i))
+                    {
+                        var zone = Corners.Find(z => s < z.T1 - _minGap && s + d > z.T0 + _minGap);
+                        if (zone != null && !_cornerLandings.ContainsValue(zone))
+                        {
+                            _cornerLandings[i] = zone;
+                            d = TreadDepthAt(o, i, s, regular[i], endStation);
+                        }
+                    }
+                    s += d;
+                }
+                if (_cornerLandings.Count == found || o.DepthMode != TreadDepthMode.FitToCurve) return;
+
+                // each flight, up to a corner landing or the curve end, gets its own fitted depth
+                FlightDepths.Clear();
+                var numbers = new List<int>(_cornerLandings.Keys);
+                numbers.Sort();
+                numbers.Add(n + 1); // the last flight ends at the curve end
+                int first = 1;
+                double start = StartStation;
+                foreach (int i in numbers)
+                {
+                    int last = Math.Min(i - 1, n);
+                    double target = i <= n ? _cornerLandings[i].T0 : endStation;
+                    if (last >= first && target > start)
+                    {
+                        double d = FitTreadDepth(o, first, last, start, target, endStation);
+                        for (int k = first; k <= last; k++) regular[k] = d;
+                        FlightDepths.Add(d);
+                    }
+                    if (i > n) break;
+                    double landing = RunEnd(o, first, last, start, regular[first], endStation);
+                    start = landing + TreadDepthAt(o, i, landing, regular[i], endStation);
+                    first = i + 1;
+                }
+                if (FlightDepths.Count > 0) TreadDepth = FlightDepths[0];
+            }
         }
 
         /// <summary>
         /// Configures the stair from its total height and curve alone: the tread depth fits the
         /// curve exactly (the last step ends at the curve end), a rest step follows every
         /// RestInterval steps, and the step count is the one whose riser + tread comes closest
-        /// to the comfort rule with risers between MinRiserHeight and MaxRiserHeight. Sets
-        /// DepthMode, DesiredStepHeight and RestSteps; returns the step count.
+        /// to the comfort rule with risers between MinRiserHeight and MaxRiserHeight. With
+        /// square landings, every sharp corner also gets a landing and each flight between
+        /// landings is fitted on its own, so the count is the one whose worst flight comes
+        /// closest to the comfort rule. Sets DepthMode, DesiredStepHeight and RestSteps;
+        /// returns the step count.
         /// </summary>
         public static int AutoConfigure(StairOptions o)
         {
@@ -318,39 +399,138 @@ namespace Stairs.Core
             int nMin = Math.Max(1, (int)Math.Ceiling(height / Math.Max(o.MaxRiserHeight, 1e-9) - 1e-9));
             int nMax = Math.Max(nMin, (int)Math.Floor(height / Math.Max(o.MinRiserHeight, 1e-9) + 1e-9));
             int interval = Math.Max(1, o.RestInterval);
+            double width = Math.Max(o.Width, 1e-9);
+
+            // walking length of the curve and its corners, in walk stations
+            o.DepthMode = TreadDepthMode.Comfort;
+            o.RestSteps = new List<RestStep>();
+            var plain = Compute(o);
+            double walk = plain.AvailableLength;
+            double start = plain.StartStation, end = start + walk;
+            var corners = o.SquareLandings ? new List<CornerZone>(plain.Corners) : new List<CornerZone>();
+            corners.Sort((x, y) => x.T0.CompareTo(y.T0));
+
+            // With square landings every corner gets a landing, which runs from the corner's
+            // start to its end (at least a stair width), so the flights between landings have
+            // fixed runs whatever the step count.
+            var runs = new List<double>();
+            {
+                double from = start;
+                foreach (var z in corners)
+                {
+                    if (z.T0 < from) { from = Math.Max(from, z.T1); continue; } // inside the previous landing
+                    runs.Add(z.T0 - from);
+                    from = Math.Max(z.T0 + width, z.T1);
+                }
+                runs.Add(Math.Max(0, end - from));
+            }
+            int perRest = Math.Max(1, interval - 1);        // treads between two rests
+            int Plain(int m) => m <= 0 ? 0 : (m - 1) / perRest; // rests that break up a flight of m treads
+
+            // how far a flight of m treads is from the comfort rule with risers r
+            double FlightError(int j, int m, double r)
+            {
+                // no treads only where there is no room for one: a single riser between two
+                // landings is easily missed underfoot
+                if (m <= 0) return runs[j] < o.MinAverageDepth ? 0 : double.MaxValue;
+                double depth = (runs[j] - Plain(m) * width) / m;
+                if (depth < o.MinAverageDepth) return double.MaxValue;
+                return Math.Abs(r + depth - o.ComfortSum);
+            }
+
+            // Tread counts per flight for n steps: of the splits that add up to n (treads, rests
+            // in long flights and one landing per corner), the one whose worst flight comes
+            // closest to the comfort rule. Null when no split adds up.
+            int[] Split(int n, out double worst)
+            {
+                worst = double.MaxValue;
+                double r = height / n, d = Math.Max(o.ComfortSum - r, o.MinAverageDepth);
+                var best = new Dictionary<int, (double Worst, int[] M)> { [0] = (0, new int[0]) };
+                for (int j = 0; j < runs.Count; j++)
+                {
+                    var next = new Dictionary<int, (double Worst, int[] M)>();
+                    int ideal = (int)Math.Round(runs[j] / (d + width / perRest));
+                    for (int m = Math.Max(0, ideal - 3); m <= ideal + 3; m++)
+                    {
+                        double e = FlightError(j, m, r);
+                        if (e == double.MaxValue) continue;
+                        int count = m + Plain(m) + (j < runs.Count - 1 ? 1 : 0); // and the landing after it
+                        foreach (var kv in best)
+                        {
+                            int k = kv.Key + count;
+                            if (k > n) continue;
+                            double w = Math.Max(kv.Value.Worst, e);
+                            if (next.TryGetValue(k, out var cur) && cur.Worst <= w) continue;
+                            var split = new int[j + 1];
+                            kv.Value.M.CopyTo(split, 0);
+                            split[j] = m;
+                            next[k] = (w, split);
+                        }
+                    }
+                    best = next;
+                }
+                if (!best.TryGetValue(n, out var found)) return null;
+                worst = found.Worst;
+                return found.M;
+            }
+
+            // Rest steps for n steps: without corner landings a rest every interval steps; with
+            // them, a landing after each flight of the best split, and a rest every interval
+            // steps inside a long flight.
             List<RestStep> Rests(int n)
             {
                 var list = new List<RestStep>();
-                for (int k = interval; k < n; k += interval) list.Add(new RestStep(k, 0));
+                int[] split = corners.Count > 0 ? Split(n, out _) : null;
+                if (split == null)
+                {
+                    for (int k = interval; k < n; k += interval) list.Add(new RestStep(k, 0));
+                    return list;
+                }
+                int step = 0;
+                for (int j = 0; j < split.Length; j++)
+                {
+                    for (int t = 1, run = 0; t <= split[j]; t++)
+                    {
+                        step++;
+                        if (++run == perRest && t < split[j]) { list.Add(new RestStep(++step, 0)); run = 0; }
+                    }
+                    if (j < split.Length - 1) list.Add(new RestStep(++step, 0)); // the corner landing
+                }
                 return list;
             }
 
-            // walking length of the curve, then a quick estimate per step count that ignores
-            // corner widening; only the most promising counts get a full layout
-            o.DepthMode = TreadDepthMode.Comfort;
-            double walk = Compute(o).AvailableLength;
+            // a quick estimate per step count that ignores corner widening; only the most
+            // promising counts get a full layout
             var candidates = new List<int>();
             for (int n = nMin; n <= nMax; n++) candidates.Add(n);
             double Estimate(int n)
             {
+                if (corners.Count > 0) { Split(n, out double worst); return worst; }
                 int rests = Rests(n).Count;
                 if (n - rests <= 0) return double.MaxValue;
                 double depth = (walk - rests * o.Width) / (n - rests);
                 return depth <= 0 ? double.MaxValue : Math.Abs(height / n + depth - o.ComfortSum);
             }
-            candidates.Sort((x, y) => Estimate(x).CompareTo(Estimate(y)));
+            var estimates = new Dictionary<int, double>();
+            foreach (int n in candidates) estimates[n] = Estimate(n);
+            candidates.Sort((x, y) => estimates[x].CompareTo(estimates[y]));
 
             o.DepthMode = TreadDepthMode.FitToCurve;
             int best = nMin;
             double bestError = double.MaxValue;
             bool bestFits = false;
-            foreach (int n in candidates.GetRange(0, Math.Min(4, candidates.Count)))
+            foreach (int n in candidates.GetRange(0, Math.Min(corners.Count > 0 ? 8 : 4, candidates.Count)))
             {
                 o.RestSteps = Rests(n);
                 o.DesiredStepHeight = height / n;
                 var layout = Compute(o);
-                bool fits = layout.Steps.Count == n;
-                double error = Math.Abs(layout.RiserHeight + layout.TreadDepth - o.ComfortSum);
+                double tol = Math.Max(o.AbsoluteTolerance, 1e-9);
+                // with square landings every corner must be filled by a landing
+                bool fits = layout.Steps.Count == n && corners.TrueForAll(z =>
+                    layout.Steps.Exists(st => st.IsRest && st.S0 <= z.T0 + tol && st.S1 >= z.T1 - tol));
+                double error = 0;
+                foreach (double depth in layout.FlightDepths.Count > 0 ? layout.FlightDepths : new List<double> { layout.TreadDepth })
+                    error = Math.Max(error, Math.Abs(layout.RiserHeight + depth - o.ComfortSum));
                 if (fits && !bestFits || fits == bestFits && error < bestError)
                 {
                     best = n; bestError = error; bestFits = fits;
@@ -470,6 +650,7 @@ namespace Stairs.Core
                 z.DepthSign = innerIsLeft ? -1 : 1;
                 double sc = curve.GetLength(new Interval(curve.Domain.Min, pk));
                 z.SC = sc;
+                _kinks.Add((sc, pk));
 
                 // the pivot is where the inner side lines of both arms cross; exact for straight
                 // arms, refined numerically when an arm is curved near the kink
@@ -592,6 +773,11 @@ namespace Stairs.Core
             var c = WalkCurve;
             double sc = Math.Min(_curveLength, Math.Max(0, s));
             if (!c.LengthParameter(sc, out double prm)) prm = sc <= 0 ? c.Domain.Min : c.Domain.Max;
+            // at a kink LengthParameter can land a hair past it, on the other arm; a one-sided
+            // tangent needs the kink parameter itself (the pivot of an inner-edge curve sits there)
+            if (side != CurveEvaluationSide.Default)
+                foreach (var k in _kinks)
+                    if (Math.Abs(sc - k.Length) < 1e-9 * (1 + _curveLength)) { prm = k.Param; break; }
             p = c.PointAt(prm);
             tangent = Horizontal(c.DerivativeAt(prm, 1, side));
             if (tangent.IsZero)

@@ -27,6 +27,9 @@ namespace Stairs.Commands
             options.PostDiameter = 4 * cm;
             options.PostSpacing = 110 * cm;
             options.RailCementThickness = 10 * cm;
+            options.RailWallGap = 10 * cm;
+            options.BalusterDiameter = 3 * cm;
+            options.BalusterSpacing = 30 * cm;
             options.NumberStyle = doc.DimStyles.Current;
 
             var go = new Rhino.Input.Custom.GetObject();

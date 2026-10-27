@@ -169,14 +169,14 @@ namespace Stairs.Core
             }
 
             // A solid band (glass pane or concrete wall) from the treads up to the
-            // sloped rail line. Tread-by-tread pieces tile without gaps; each piece is
+            // sloped rail line, or drop below it. Tread-by-tread pieces tile without gaps; each piece is
             // joined directly from planar faces (no booleans, which left mistrimmed edges).
-            void AddPanel(double halfThickness)
+            void AddPanel(double halfThickness, double drop = 0)
             {
                 foreach (var st in steps)
                 {
-                    double topA = RailZ(st.S0, 1.0);
-                    double topB = RailZ(st.S1, 1.0);
+                    double topA = RailZ(st.S0, 1.0) - drop;
+                    double topB = RailZ(st.S1, 1.0) - drop;
                     double zBot = st.TopZ;
                     for (int k = 0; k < st.Samples.Count - 1; k++)
                     {
@@ -212,6 +212,43 @@ namespace Stairs.Core
                         var piece = StairGeometry.JoinPlanarFaces(faces, tol);
                         if (piece != null) output.Add(piece);
                     }
+                }
+            }
+
+            // Walk station at plan length len along the rail (the inverse of RailLength).
+            double StationAt(double len)
+            {
+                double lo = steps[0].S0, hi = sEnd;
+                for (int i = 0; i < 60; i++)
+                {
+                    double mid = (lo + hi) / 2;
+                    if (RailLength(mid) < len) lo = mid; else hi = mid;
+                }
+                return (lo + hi) / 2;
+            }
+
+            // Plumb bars from a concrete wall drop below the rail line up to rise above it (the
+            // handrail's centre), spread evenly along the rail in plan, never more than spacing apart. The end
+            // bars stand inset from the rail's ends; each foot sinks one radius into the sloping wall.
+            void AddBalusters(double drop, double rise, double radius, double spacing, double inset)
+            {
+                double total = RailLength(sEnd);
+                double usable = total - 2 * inset;
+                var at = new List<double>();
+                if (usable <= tol) at.Add(total / 2);
+                else
+                {
+                    int count = Math.Max(1, (int)Math.Ceiling(usable / Math.Max(spacing, tol) - 1e-9));
+                    for (int i = 0; i <= count; i++) at.Add(inset + usable * i / count);
+                }
+                foreach (double len in at)
+                {
+                    double s = StationAt(len);
+                    double zTop = RailZ(s, 1.0);
+                    var foot = Pt(s, zTop - drop - radius);
+                    var cyl = new Cylinder(new Circle(new Plane(foot, Vector3d.ZAxis), radius), drop + radius + rise);
+                    var bar = cyl.ToBrep(true, true);
+                    if (bar != null) output.Add(bar);
                 }
             }
 
@@ -251,11 +288,20 @@ namespace Stairs.Core
                     AddPipe(RailLine(0.1), barR);          // continuous low bar
                     break;
                 case RailType.Cement:
-                    AddPanel(Math.Max(o.RailCementThickness, tol) / 2); // concrete wall with sloped top
-                    AddPipe(RailLineRaised(1.0, tubeR), tubeR);         // metal handle sitting on the wall
+                {
+                    // the wall stops short of the handrail; balusters fill the gap up to the handrail's centre
+                    double wallHalf = Math.Max(o.RailCementThickness, tol) / 2;
+                    double drop = h - CementWallTop(h, o.RailWallGap);
+                    AddPanel(wallHalf, drop);                    // concrete wall with sloped top
+                    AddPipe(RailLineRaised(1.0, tubeR), tubeR);  // handrail, its underside at the rail height
+                    AddBalusters(drop, tubeR, Math.Max(o.BalusterDiameter, tol) / 2, o.BalusterSpacing, wallHalf);
                     break;
+                }
             }
             return output;
         }
+
+        /// <summary>Top of a concrete railing's wall: gap below the underside of a handrail at height h.</summary>
+        internal static double CementWallTop(double h, double gap) => h > 2 * gap ? h - Math.Max(gap, 0) : h / 2;
     }
 }
