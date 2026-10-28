@@ -48,9 +48,11 @@ adjust it.
 
 | Winders | Curved |
 |:---:|:---:|
-| ![Plank winders around a 90 degree corner, with step numbers](images/winders.png) | ![A curved concrete stair with metal railings](images/curved.png) |
+| ![A concrete stair with winders around a 90 degree corner and a metal railing on the outer side](images/winders.png) | ![A curved concrete stair with metal railings on both sides](images/curved.png) |
 | **Autoconfigured** | **Pyramid width** |
-| ![A stair with two sharp corners, autoconfigured with rest steps](images/autoconfigure.png) | ![A concrete stair whose steps narrow toward the top](images/pyramid.png) |
+| ![A stair with two sharp corners, autoconfigured with a square landing in each corner](images/autoconfigure.png) | ![A concrete stair whose steps narrow toward the top, with railings following the edges](images/pyramid.png) |
+| **Concrete railings** | **Floating planks** |
+| ![A curved stair with concrete walls and metal balusters up to the handrail](images/concrete.png) | ![Floating plank treads along a curve, with a metal railing](images/planks.png) |
 
 ## Requirements
 
