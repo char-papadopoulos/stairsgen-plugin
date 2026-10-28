@@ -1,6 +1,6 @@
 # Stairs for Rhino 8
 
-**Version 1.1.1**
+**Version 1.1.5**
 
 A Rhino 8 plug-in that builds a complete staircase along a flat curve. Draw
 the curve, set the total height, and the plug-in lays out the steps, the
@@ -16,6 +16,8 @@ adjust it.
   outer edge.
 - **Winders at corners.** A sharp corner becomes a fan of winder treads
   around the inner corner. Treads never overlap or leave gaps, at any angle.
+  A smooth bend tighter than the stair is wide gets the same fan, from the
+  point where the inside edge of the stair would cross itself.
 - **Comfortable steps.** Tread depth follows the comfort rule
   (riser + tread ≈ 46 cm) by default. No tread's average depth goes below
   18 cm, so sharp corners get fewer, wider winders.

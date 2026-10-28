@@ -78,6 +78,12 @@ def s_curve():
     pts = [Point3d(0, 0, 0), Point3d(2, 0, 0), Point3d(3, 1.5, 0), Point3d(5, 2.5, 0), Point3d(7, 2.5, 0)]
     return NurbsCurve.CreateInterpolatedCurve(pts, 3)
 
+def tight_s():
+    """A freeform S whose bends (radius 0.33 and 0.41) are tighter than the 1 m stair width."""
+    pts = [(-0.01, -0.7853), (-0.4248, -0.0244), (-0.0283, 0.3636), (0.5021, 0.9321),
+           (-0.0408, 1.5485), (-0.4936, 1.9729), (-0.0187, 2.6094)]
+    return NurbsCurve.Create(False, 3, [Point3d(x, y, 0) for x, y in pts])
+
 
 # --- scenarios: (name, curve, options, expectations) ------------------------------------
 # options: role mid|inner|outer, structure slab|plank, rail none|left|right|both,
@@ -113,6 +119,11 @@ def build_scenarios():
         ("arc over 180 inner", arc(1, 200), {"role": "inner"}, {"warn": [OVERFLOW], "steps": 11, "outside_of": ((0, 1), 1)}),
         ("arc tall 300 glass both", arc(3, 300), {"height": 8.0, "rail": "both", "rail_type": "glass"}, {}),
         ("s-curve metal both", s_curve(), {"rail": "both", "rail_type": "metal"}, {}),
+        # bends tighter than the stair reaches inward: the treads fan there instead of overlapping
+        ("tight s inner", tight_s(), {"role": "inner", "height": 1.2}, {}),
+        ("tight s inner flip glass both", tight_s(), {"role": "inner", "flip": True, "height": 1.2, "rail": "both", "rail_type": "glass"}, {}),
+        ("tight s mid plank", tight_s(), {"height": 1.2, "structure": "plank"}, {}),
+        ("tight s outer fit cement", tight_s(), {"role": "outer", "height": 1.2, "mode": "fit", "rail": "both", "rail_type": "cement"}, {}),
         ("arc rest step glass both", arc(3, 160), {"rest": [(7, 0.0)], "rail": "both", "rail_type": "glass"}, {}),
         ("arc into corner", arc_then_corner(), {}, {}),
         ("arc 170 wide metal both", arc(3.2, 170), {"width": 1.1, "height": 3.4, "rail": "both", "rail_type": "metal"}, {}),

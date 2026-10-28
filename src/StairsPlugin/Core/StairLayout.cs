@@ -17,11 +17,12 @@ namespace Stairs.Core
     }
 
     /// <summary>
-    /// A sharp corner (tangent kink) of the walking curve. Outside corner zones the
-    /// tread cut lines are square to the curve; inside a zone they fan out from the
-    /// pivot, the inner corner of the stair band. The zone runs between the two
-    /// square cut lines through the pivot and is walked along the band's center
-    /// line, so winder treads keep the regular depth there for every curve role.
+    /// A sharp corner (tangent kink) of the walking curve, or a smooth bend tighter than
+    /// the band reaches to its inside. Outside these zones the tread cut lines are square
+    /// to the curve; inside a zone they fan out from the pivot, the inner corner of the
+    /// stair band. The zone runs between the two square cut lines through the pivot and is
+    /// walked along the band's center line, so winder treads keep the regular depth there
+    /// for every curve role.
     /// </summary>
     public class CornerZone
     {
@@ -36,9 +37,37 @@ namespace Stairs.Core
         internal double OffsetAfter;       // walk station minus curve arc length past this zone
         internal int Subdivisions;         // fan facets per half of the zone
 
+        // Tight bend of a smooth curve: square cut lines would cross inside the band, so they
+        // fan from the pivot (where the inner side line crosses itself) to the outer side line,
+        // which keeps following the curve.
+        internal bool Smooth;
+        internal double MidOff;                 // band offset of the center line
+        internal Func<double, Point3d> OuterAt; // outer side point (z = 0) at curve arc length s
+        internal double[] WalkTable, ArcTable;  // walk stations and curve arc lengths through the zone
+        internal double WalkLength, HalfLength; // walk length through the zone, and up to TM
+
+        /// <summary>Curve arc length of the cut line at walk station t (tight bends).</summary>
+        internal double ArcAt(double t) => Interpolate(WalkTable, ArcTable, t);
+
+        /// <summary>Walk station of the cut line through curve arc length s (tight bends).</summary>
+        internal double WalkAt(double s) => Interpolate(ArcTable, WalkTable, s);
+
+        static double Interpolate(double[] xs, double[] ys, double x)
+        {
+            if (x <= xs[0]) return ys[0];
+            int n = xs.Length;
+            if (x >= xs[n - 1]) return ys[n - 1];
+            int i = Array.BinarySearch(xs, x);
+            if (i >= 0) return ys[i];
+            i = ~i; // xs[i - 1] < x < xs[i]
+            double f = (x - xs[i - 1]) / Math.Max(xs[i] - xs[i - 1], 1e-15);
+            return ys[i - 1] + (ys[i] - ys[i - 1]) * f;
+        }
+
         /// <summary>Point on the band center line at walk station t (T0 &lt;= t &lt;= T1).</summary>
         internal Point3d MidPoint(double t)
         {
+            if (Smooth) return SidePoint(t, MidOff);
             if (t <= TM)
             {
                 double f = TM - T0 > 1e-12 ? Math.Min(1, Math.Max(0, (t - T0) / (TM - T0))) : 1;
@@ -51,7 +80,7 @@ namespace Stairs.Core
         /// <summary>Unit direction of the cut line at walk station t, from the pivot outward.</summary>
         internal Vector3d FanDir(double t)
         {
-            var e = MidPoint(t) - Pivot;
+            var e = (Smooth ? OuterAt(ArcAt(t)) : MidPoint(t)) - Pivot;
             e.Z = 0;
             if (!e.Unitize()) e = t <= TM ? UIn : UOut;
             return e;
@@ -64,6 +93,13 @@ namespace Stairs.Core
         /// </summary>
         internal Point3d SidePoint(double t, double offset)
         {
+            if (Smooth)
+            {
+                // straight from the pivot (inner side) to the outer side line
+                var outer = OuterAt(ArcAt(t));
+                double f = (offset - InnerOff) / (OuterOff - InnerOff);
+                return Pivot + (outer - Pivot) * f;
+            }
             var e = FanDir(t);
             double depth = (offset - InnerOff) * DepthSign;
             double k = Math.Max(e * UIn, e * UOut);
@@ -622,7 +658,8 @@ namespace Stairs.Core
         {
             var curve = WalkCurve;
             double midOff = (A + B) / 2;
-            double offset = 0;
+            var zones = new List<CornerZone>();
+            var spans = new List<double> { 0 }; // arc lengths where the smooth stretches of the curve end
             double p = curve.Domain.Min;
             while (curve.GetNextDiscontinuity(Continuity.G1_continuous, p, curve.Domain.Max, out double pk))
             {
@@ -651,6 +688,7 @@ namespace Stairs.Core
                 double sc = curve.GetLength(new Interval(curve.Domain.Min, pk));
                 z.SC = sc;
                 _kinks.Add((sc, pk));
+                spans.Add(sc);
 
                 // the pivot is where the inner side lines of both arms cross; exact for straight
                 // arms, refined numerically when an arm is curved near the kink
@@ -673,18 +711,247 @@ namespace Stairs.Core
                 z.MidM = LineCross(z.MidA, tA, z.MidB, tB);
                 z.SA = sa;
                 z.SB = sb;
-                double l1 = z.MidA.DistanceTo(z.MidM), l2 = z.MidM.DistanceTo(z.MidB);
-                z.T0 = z.SA + offset;
-                z.TM = z.T0 + l1;
-                z.T1 = z.TM + l2;
-                offset += (l1 + l2) - (z.SB - z.SA);
-                z.OffsetAfter = offset;
+                z.HalfLength = z.MidA.DistanceTo(z.MidM);
+                z.WalkLength = z.HalfLength + z.MidM.DistanceTo(z.MidB);
                 z.Subdivisions = Math.Max(1, (int)Math.Ceiling(Math.Abs(z.Turn) / 2 / FacetTurn - 1e-9));
+                zones.Add(z);
+            }
+            spans.Add(_curveLength);
+            for (int k = 0; k + 1 < spans.Count; k++)
+                FindTightBends(spans[k], spans[k + 1], midOff, tol, zones);
+
+            // walk stations, in order along the curve: a zone is walked along the band center
+            zones.Sort((x, y) => x.SA.CompareTo(y.SA));
+            double offset = 0;
+            foreach (var z in zones)
+            {
+                z.T0 = z.SA + offset;
+                z.TM = z.T0 + z.HalfLength;
+                z.T1 = z.T0 + z.WalkLength;
+                if (z.Smooth)
+                    for (int k = 0; k < z.WalkTable.Length; k++) z.WalkTable[k] += z.T0;
+                offset += z.WalkLength - (z.SB - z.SA);
+                z.OffsetAfter = offset;
 
                 if (Corners.Count > 0 && Corners[Corners.Count - 1].SB > z.SA + tol)
                     Warnings.Add("Two corners are too close together for the stair width; treads around them overlap.");
                 Corners.Add(z);
             }
+            WarnTightBends(tol);
+        }
+
+        /// <summary>
+        /// Tight bends of the smooth stretch s0..s1 of the curve. Where the curve bends tighter
+        /// than the band reaches to the inside of the bend, that side line loops back across
+        /// itself and square cut lines would cross inside the stair, so the treads overlap. Such
+        /// a bend becomes a zone like a corner: its cut lines fan out from the point where the
+        /// side line crosses itself, and the outer side keeps following the curve.
+        /// </summary>
+        void FindTightBends(double s0, double s1, double midOff, double tol, List<CornerZone> zones)
+        {
+            if (s1 - s0 <= _minGap) return;
+            foreach (double off in new[] { A, B })
+            {
+                if (Math.Abs(off) < 1e-12) continue; // the curve itself never loops
+
+                // loops of the side line: a coarse pass along the whole stretch, then a fine one
+                // around every bend that is too tight but showed no loop (barely too tight bends
+                // make loops smaller than the coarse spacing)
+                double maxStep = Math.Max(Math.Abs(off) / 4, _minGap);
+                var loops = SideLoops(s0, s1, off, maxStep);
+                foreach (var (c0, c1, excess) in TooTight(s0, s1, off))
+                {
+                    if (excess <= tol || loops.Exists(l => l.Sa <= c0 && l.Sb >= c1)) continue;
+                    // near an end of the curve the loop may close only past it, on the straight
+                    // extension the stair is laid out along there
+                    double w = Math.Abs(off) * 4;
+                    double step = Math.Min(maxStep, Math.Max(excess / 4, _minGap));
+                    double a = s0 > 0 ? Math.Max(s0, c0 - w) : c0 - w;
+                    double b = s1 < _curveLength ? Math.Min(s1, c1 + w) : c1 + w;
+                    step = Math.Max(step, (b - a) / 2000); // keep the pairwise search bounded
+                    loops.AddRange(SideLoops(a, b, off, step));
+                }
+                loops.Sort((x, y) => (y.Sb - y.Sa).CompareTo(x.Sb - x.Sa));
+                var kept = new List<(double Sa, double Sb)>();
+                foreach (var l in loops)
+                    if (!kept.Exists(k => l.Sa < k.Sb && l.Sb > k.Sa)) kept.Add(l);
+
+                foreach (var (estA, estB) in kept)
+                {
+                    double sa = estA, sb = estB;
+                    RefinePivot(off, (sa + sb) / 2, ref sa, ref sb, tol);
+                    if (zones.Exists(k => sa < k.SB && sb > k.SA)) continue; // inside a corner zone
+                    var z = TightBend(sa, sb, off, midOff);
+                    if (z != null) zones.Add(z);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Where the side line at band offset 'off' crosses itself between curve arc lengths
+        /// s0 and s1, as pairs of arc lengths (before, after), sampled at most 'step' apart.
+        /// </summary>
+        List<(double Sa, double Sb)> SideLoops(double s0, double s1, double off, double step)
+        {
+            var ss = new List<double>();
+            var seeds = FacetStations(WalkCurve, s0, s1, FacetTurn / 4);
+            for (int i = 0; i + 1 < seeds.Count; i++)
+            {
+                int m = Math.Max(1, (int)Math.Ceiling((seeds[i + 1] - seeds[i]) / step));
+                for (int j = 0; j < m; j++) ss.Add(seeds[i] + (seeds[i + 1] - seeds[i]) * j / m);
+            }
+            ss.Add(seeds[seeds.Count - 1]);
+            var q = ss.ConvertAll(x => SideAtLength(x, off));
+            var loops = new List<(double Sa, double Sb)>();
+            for (int i = 0; i + 1 < q.Count; i++)
+                for (int j = i + 2; j + 1 < q.Count; j++)
+                    if (SegmentsCross(q[i], q[i + 1], q[j], q[j + 1], out double u, out double v))
+                        loops.Add((ss[i] + (ss[i + 1] - ss[i]) * u, ss[j] + (ss[j + 1] - ss[j]) * v));
+            return loops;
+        }
+
+        /// <summary>
+        /// Stretches between s0 and s1 where the curve bends toward band offset 'off' tighter
+        /// than the band reaches there, with how much tighter at most.
+        /// </summary>
+        List<(double C0, double C1, double Excess)> TooTight(double s0, double s1, double off)
+        {
+            var res = new List<(double, double, double)>();
+            const int n = 400;
+            double start = double.NaN, excess = 0;
+            for (int i = 0; i <= n; i++)
+            {
+                double s = s0 + (s1 - s0) * i / n;
+                double e = 0;
+                if (WalkCurve.LengthParameter(s, out double prm))
+                {
+                    var k = WalkCurve.CurvatureAt(prm);
+                    k.Z = 0;
+                    var tan = WalkCurve.TangentAt(prm);
+                    bool left = tan.X * k.Y - tan.Y * k.X > 0;
+                    if (k.Length > 1e-12 && left == off > 0) e = Math.Abs(off) - 1 / k.Length;
+                }
+                if (e > 0)
+                {
+                    if (double.IsNaN(start)) { start = s; excess = 0; }
+                    excess = Math.Max(excess, e);
+                }
+                else if (!double.IsNaN(start))
+                {
+                    res.Add((start, s, excess));
+                    start = double.NaN;
+                }
+            }
+            if (!double.IsNaN(start)) res.Add((start, s1, excess));
+            return res;
+        }
+
+        /// <summary>The zone of a tight bend between curve arc lengths sa and sb, whose side line at 'inner' loops.</summary>
+        CornerZone TightBend(double sa, double sb, double inner, double midOff)
+        {
+            var z = new CornerZone { Smooth = true, SA = sa, SB = sb, SC = (sa + sb) / 2, MidOff = midOff };
+            bool innerIsLeft = inner > midOff;
+            z.InnerOff = inner;
+            z.OuterOff = innerIsLeft ? A : B;
+            z.DepthSign = innerIsLeft ? -1 : 1;
+            CurveFrame(sa, CurveEvaluationSide.Default, out Point3d pA, out Vector3d tA);
+            CurveFrame(sb, CurveEvaluationSide.Default, out Point3d pB, out Vector3d tB);
+            var leftIn = Vector3d.CrossProduct(Vector3d.ZAxis, tA);
+            var leftOut = Vector3d.CrossProduct(Vector3d.ZAxis, tB);
+            var qa = new Point3d(pA.X + leftIn.X * inner, pA.Y + leftIn.Y * inner, 0);
+            var qb = new Point3d(pB.X + leftOut.X * inner, pB.Y + leftOut.Y * inner, 0);
+            z.Pivot = (qa + qb) / 2;
+            z.UIn = leftIn * z.DepthSign;
+            z.UOut = leftOut * z.DepthSign;
+            double outer = z.OuterOff;
+            z.OuterAt = s =>
+            {
+                CurveFrame(s, CurveEvaluationSide.Default, out Point3d c, out Vector3d tan);
+                var l = Vector3d.CrossProduct(Vector3d.ZAxis, tan);
+                return new Point3d(c.X + l.X * outer, c.Y + l.Y * outer, 0);
+            };
+
+            // how far the curve turns through the bend, and the walk along the band center
+            var turnStations = FacetStations(WalkCurve, sa, sb, FacetTurn / 4);
+            double turn = 0;
+            for (int i = 0; i + 1 < turnStations.Count; i++)
+            {
+                var t0 = TangentAtLength(WalkCurve, turnStations[i]); t0.Z = 0;
+                var t1 = TangentAtLength(WalkCurve, turnStations[i + 1]); t1.Z = 0;
+                turn += Math.Atan2(t0.X * t1.Y - t0.Y * t1.X, t0 * t1);
+            }
+            if (turn * (innerIsLeft ? 1 : -1) <= 0) return null;
+            z.Turn = turn;
+            z.Subdivisions = Math.Max(1, (int)Math.Ceiling(Math.Abs(turn) / 2 / FacetTurn - 1e-9));
+            int n = Math.Max(32, z.Subdivisions * 8);
+            z.ArcTable = new double[n + 1];
+            z.WalkTable = new double[n + 1];
+            double f = (midOff - inner) / (outer - inner);
+            Point3d prev = Point3d.Unset;
+            for (int k = 0; k <= n; k++)
+            {
+                double s = sa + (sb - sa) * k / n;
+                var mid = z.Pivot + (z.OuterAt(s) - z.Pivot) * f;
+                z.ArcTable[k] = s;
+                z.WalkTable[k] = k == 0 ? 0 : z.WalkTable[k - 1] + mid.DistanceTo(prev);
+                prev = mid;
+            }
+            z.WalkLength = z.WalkTable[n];
+            z.HalfLength = z.WalkLength / 2;
+            if (z.WalkLength <= _minGap) return null;
+            for (int k = 1; k <= n; k++) // strictly increasing, for the lookups
+                if (z.WalkTable[k] <= z.WalkTable[k - 1]) z.WalkTable[k] = z.WalkTable[k - 1] + 1e-12;
+            z.MidA = z.MidPoint(0); // not used by tight bends; kept meaningful
+            return z;
+        }
+
+        /// <summary>
+        /// Warns when the curve still bends tighter than the band reaches to the inside of the
+        /// bend outside every zone (a bend turning back on itself has no crossing to fan from).
+        /// </summary>
+        void WarnTightBends(double tol)
+        {
+            const int n = 400;
+            for (int i = 1; i < n; i++)
+            {
+                double s = _curveLength * i / n;
+                if (Corners.Exists(z => s > z.SA - _minGap && s < z.SB + _minGap)) continue;
+                if (!WalkCurve.LengthParameter(s, out double prm)) continue;
+                var k = WalkCurve.CurvatureAt(prm);
+                k.Z = 0;
+                if (k.Length < 1e-12) continue;
+                var tan = Horizontal(WalkCurve.DerivativeAt(prm, 1));
+                bool left = tan.X * k.Y - tan.Y * k.X > 0;
+                double reach = left ? B : -A; // how far the band reaches to the inside of the bend
+                if (reach > tol && 1 / k.Length < reach - tol)
+                {
+                    Warnings.Add(string.Format(
+                        "The curve bends tighter (radius {0:0.###}) than the stair reaches inward ({1:0.###}); treads there overlap.",
+                        1 / k.Length, reach));
+                    return;
+                }
+            }
+        }
+
+        /// <summary>Point on the side line at band offset 'off', at curve arc length s (z = 0).</summary>
+        Point3d SideAtLength(double s, double off)
+        {
+            CurveFrame(s, CurveEvaluationSide.Default, out Point3d p, out Vector3d tan);
+            var l = Vector3d.CrossProduct(Vector3d.ZAxis, tan);
+            return new Point3d(p.X + l.X * off, p.Y + l.Y * off, 0);
+        }
+
+        /// <summary>Whether the plan segments p0-p1 and q0-q1 cross; u and v are where, along each.</summary>
+        static bool SegmentsCross(Point3d p0, Point3d p1, Point3d q0, Point3d q1, out double u, out double v)
+        {
+            u = v = 0;
+            double dx = p1.X - p0.X, dy = p1.Y - p0.Y, ex = q1.X - q0.X, ey = q1.Y - q0.Y;
+            double den = dx * ey - dy * ex;
+            if (Math.Abs(den) < 1e-15) return false;
+            double wx = q0.X - p0.X, wy = q0.Y - p0.Y;
+            u = (wx * ey - wy * ex) / den;
+            v = (wx * dy - wy * dx) / den;
+            return u > 0 && u < 1 && v > 0 && v < 1;
         }
 
         /// <summary>
@@ -795,6 +1062,7 @@ namespace Stairs.Core
             double off = 0;
             foreach (var z in Corners)
             {
+                if (s > z.SA && s < z.SB && z.Smooth) return z.WalkAt(s);
                 if (s > z.SA && s < z.SB)
                 {
                     // the cut line through the curve point fans from the pivot: find where it meets the center line
