@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <path d="M15.84 42.03 L45.50 24.91 L32.16 17.20 L2.50 34.32Z" fill="#D9D9D9" stroke="#3C3C3C" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M15.84 44.43 L45.50 27.30 L45.50 24.91 L15.84 42.03Z" fill="#B9B9B9" stroke="#3C3C3C" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M45.50 27.30 L32.16 19.60 L32.16 17.20 L45.50 24.91Z" fill="#B9B9B9" stroke="#3C3C3C" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M4.84 33.96 L33.02 17.70 L33.02 4.00 L4.84 20.27Z" fill="#9CC8F0" stroke="#3C3C3C" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M4.84 34.82 L4.84 20.27" stroke="#3C4654" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M18.93 26.69 L18.93 12.13" stroke="#3C4654" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M33.02 18.56 L33.02 4.00" stroke="#3C4654" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M4.84 33.96 L33.02 17.70" stroke="#3C4654" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M4.10 20.70 L33.76 3.57" stroke="#3C4654" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

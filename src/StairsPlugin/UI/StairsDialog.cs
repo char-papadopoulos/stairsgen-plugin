@@ -21,6 +21,33 @@ namespace Stairs.UI
         private const int FieldWidth = 96;   // numeric fields
         private const int ChoiceWidth = 228; // drop-downs and the rest-step list
         private const int StatusWidth = 440;
+        private const int PickWidth = 78;  // picture buttons, as in the door and window dialogs; "Outer edge" on one line
+        private const int PickHeight = 57;
+        private const int PickIcon = 32;
+        private const float PickFontScale = 0.9f;
+
+        private static readonly (Core.CurveRole value, string name, string icon, string tip)[] Roles =
+        {
+            (Core.CurveRole.Mid, "Middle", "stairs.role_mid", "The curve runs along the middle of the stair."),
+            (Core.CurveRole.Inner, "Inner edge", "stairs.role_inner", "The curve is the stair's inner edge, on the inside of its turns."),
+            (Core.CurveRole.Outer, "Outer edge", "stairs.role_outer", "The curve is the stair's outer edge, on the outside of its turns."),
+        };
+        private static readonly (Core.StairStructure value, string name, string icon, string tip)[] Structures =
+        {
+            (Core.StairStructure.Slab, "Slab", "stairs.struct_slab", "A continuous concrete slab with a sloped underside."),
+            (Core.StairStructure.Plank, "Planks", "stairs.struct_plank", "Floating treads: one plank per step."),
+        };
+        private const int NoRailing = -1; // the railing pictures: none, or a railing type
+        private static readonly (int value, string name, string icon, string tip)[] Railings =
+        {
+            (NoRailing, "None", "stairs.rail_none", "No railing."),
+            ((int)Core.RailType.Glass, "Glass", "railings.glass", "Glass panels in a metal frame, with a handrail."),
+            ((int)Core.RailType.Metal, "Metal", "railings.metal", "Metal posts and bars, with a handrail."),
+            ((int)Core.RailType.Cement, "Concrete", "railings.cement", "A low concrete wall with balusters up to a handrail."),
+        };
+        private readonly Dictionary<Core.CurveRole, ToggleButton> _roleButtons = new Dictionary<Core.CurveRole, ToggleButton>();
+        private readonly Dictionary<Core.StairStructure, ToggleButton> _structureButtons = new Dictionary<Core.StairStructure, ToggleButton>();
+        private readonly Dictionary<int, ToggleButton> _railButtons = new Dictionary<int, ToggleButton>();
 
         private readonly NumericStepper _height = new NumericStepper();
         private readonly NumericStepper _stepHeight = new NumericStepper();
@@ -32,17 +59,14 @@ namespace Stairs.UI
         private readonly NumericStepper _steps = new NumericStepper { MinValue = 1, MaxValue = 999, DecimalPlaces = 0, Increment = 1, Width = FieldWidth };
         private readonly DropDown _depthMode = new DropDown { Width = ChoiceWidth - FieldWidth - 6 };
         private readonly Label _riserInfo = new Label { TextColor = Colors.Gray, VerticalAlignment = VerticalAlignment.Center };
-        private readonly Label _autoInfo = new Label { Text = "from the height alone", TextColor = Colors.Gray, VerticalAlignment = VerticalAlignment.Center };
         private string _info = ""; // shown in the status area when there are no warnings
-        private readonly DropDown _role = new DropDown { Width = ChoiceWidth };
-        private readonly DropDown _structure = new DropDown { Width = ChoiceWidth };
         private readonly NumericStepper _thickness = new NumericStepper();
-        private readonly Label _thicknessLabel = RowLabel("Slab depth");
-        private readonly CheckBox _showNumbers = new CheckBox { Text = "Show step numbers on treads", Checked = true };
+        private readonly Label _thicknessLabel = new Label { Text = "Slab depth", VerticalAlignment = VerticalAlignment.Center };
+        private readonly CheckBox _showNumbers = new CheckBox { Text = "Step numbers on treads", Checked = true };
         private readonly NumericStepper _restNumber = new NumericStepper { MinValue = 1, DecimalPlaces = 0, Increment = 1, Value = 1, Width = 64 };
         private readonly CheckBox _restCustomDepth = new CheckBox { Text = "Depth" };
         private readonly NumericStepper _restDepth = new NumericStepper { Enabled = false };
-        private readonly ListBox _restList = new ListBox { Size = new Size(ChoiceWidth, 62) };
+        private readonly ListBox _restList = new ListBox { Size = new Size(ChoiceWidth - 28, 62) };
         private readonly Button _removeRest = new Button { Text = "Remove", Enabled = false };
         private readonly CheckBox _squareLandings = new CheckBox
         {
@@ -51,7 +75,6 @@ namespace Stairs.UI
                     + "flights before and after it, instead of following the winder fan.",
         };
         private readonly DropDown _railSide = new DropDown { Width = FieldWidth + 24 };
-        private readonly DropDown _railType = new DropDown { Width = ChoiceWidth };
         private readonly NumericStepper _railHeight = new NumericStepper();
         private readonly CheckBox _livePreview = new CheckBox { Text = "Live preview", Checked = true };
         private static readonly Color WarningColor = Color.FromArgb(230, 150, 50);
@@ -316,21 +339,10 @@ namespace Stairs.UI
         {
             string unit = _doc.GetUnitSystemName(true, false, true, true);
 
-            _role.Items.Add(new ListItem { Text = "Mid line", Tag = (int)Core.CurveRole.Mid });
-            _role.Items.Add(new ListItem { Text = "Inner edge", Tag = (int)Core.CurveRole.Inner });
-            _role.Items.Add(new ListItem { Text = "Outer edge", Tag = (int)Core.CurveRole.Outer });
-
-            _structure.Items.Add(new ListItem { Text = "Continuous slab (concrete)", Tag = (int)Core.StairStructure.Slab });
-            _structure.Items.Add(new ListItem { Text = "Planks (floating treads)", Tag = (int)Core.StairStructure.Plank });
-
-            _railSide.Items.Add(new ListItem { Text = "None", Tag = (int)Core.RailSide.None });
+            _railSide.Items.Add(new ListItem { Text = "Both sides", Tag = (int)Core.RailSide.Both });
             _railSide.Items.Add(new ListItem { Text = "Left", Tag = (int)Core.RailSide.Left });
             _railSide.Items.Add(new ListItem { Text = "Right", Tag = (int)Core.RailSide.Right });
-            _railSide.Items.Add(new ListItem { Text = "Both", Tag = (int)Core.RailSide.Both });
-
-            _railType.Items.Add(new ListItem { Text = "Glass with metal frame", Tag = (int)Core.RailType.Glass });
-            _railType.Items.Add(new ListItem { Text = "Metal railing", Tag = (int)Core.RailType.Metal });
-            _railType.Items.Add(new ListItem { Text = "Concrete wall + balusters + handrail", Tag = (int)Core.RailType.Cement });
+            _railSide.ToolTip = "Seen walking up the stair.";
 
             _depthMode.Items.Add(new ListItem { Text = "Comfort rule", Tag = (int)Core.TreadDepthMode.Comfort });
             _depthMode.Items.Add(new ListItem { Text = "Fit to curve", Tag = (int)Core.TreadDepthMode.FitToCurve });
@@ -349,20 +361,20 @@ namespace Stairs.UI
             SetupLength(_railHeight, 30, 5);
             SetupLength(_restDepth, 0, 5);
 
-            var pickBtn = new Button { Text = "Pick Curve", Image = LoadIcon("pick.png") };
+            var pickBtn = new Button { Text = "Pick Curve", Image = LoadIcon("pick.png"), ToolTip = "Select another flat curve for the stair." };
             pickBtn.Click += (s, e) => PickCurve();
 
-            var flipBtn = new Button { Text = "Flip Direction", Image = LoadIcon("flip.png") };
+            var flipBtn = new Button { Text = "Flip Direction", Image = LoadIcon("flip.png"), ToolTip = "The stair rises from the other end of the curve." };
             flipBtn.Click += (s, e) => { _o.Flip = !_o.Flip; Rebuild(); };
 
-            var measureBtn = new Button { Text = "Measure", Image = LoadIcon("measure.png") };
+            var measureBtn = new Button { Text = "Measure", Image = LoadIcon("measure.png"), ToolTip = "Click two points to measure the total height." };
             measureBtn.Click += (s, e) => MeasureHeight();
 
             var autoBtn = new Button
             {
                 Text = "Autoconfigure",
                 Image = LoadIcon("auto.png"),
-                ToolTip = "Uses only the total height and the curve: picks the number of steps by the comfort rule "
+                ToolTip = "From the total height and the curve alone: picks the number of steps by the comfort rule "
                         + "(riser + tread \u2248 46 cm), fits the treads so the last step ends exactly at the curve end, "
                         + "and adds a rest step after every " + _o.RestInterval + " steps. With square landings, "
                         + "it also puts a landing in every sharp corner.",
@@ -379,9 +391,13 @@ namespace Stairs.UI
             var cancelBtn = new Button { Text = "Close" };
             cancelBtn.Click += (s, e) => Close();
 
-            var restListRow = new StackLayout { Orientation = Orientation.Horizontal, Spacing = 6, VerticalContentAlignment = VerticalAlignment.Top };
+            // the list, with Remove and the corner option beside it
+            var restSide = new StackLayout { Orientation = Orientation.Vertical, Spacing = 8, HorizontalContentAlignment = HorizontalAlignment.Left };
+            restSide.Items.Add(_removeRest);
+            restSide.Items.Add(_squareLandings);
+            var restListRow = new StackLayout { Orientation = Orientation.Horizontal, Spacing = 8, VerticalContentAlignment = VerticalAlignment.Top };
             restListRow.Items.Add(_restList);
-            restListRow.Items.Add(_removeRest);
+            restListRow.Items.Add(restSide);
 
             // Buttons keep their natural height: in a stack nothing stretches them to fill leftover space
             var footer = new StackLayout { Orientation = Orientation.Horizontal, Spacing = 6, VerticalContentAlignment = VerticalAlignment.Center };
@@ -390,31 +406,34 @@ namespace Stairs.UI
             footer.Items.Add(createBtn);
             footer.Items.Add(cancelBtn);
 
+            // Choices are pictures, as in the door and window dialogs; the settings that go with a
+            // choice sit beside its pictures, which keeps the window short.
+            var curveButtons = new StackLayout { Orientation = Orientation.Vertical, Spacing = 6, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            curveButtons.Items.Add(pickBtn);
+            curveButtons.Items.Add(flipBtn);
+
+            var structureSide = new StackLayout { Orientation = Orientation.Vertical, Spacing = 10 };
+            structureSide.Items.Add(Line(_thicknessLabel, _thickness));
+            structureSide.Items.Add(_showNumbers);
+
+            var railSide = new TableLayout { Spacing = new Size(6, 6) };
+            railSide.Rows.Add(new TableRow(SideLabel("Side"), _railSide));
+            railSide.Rows.Add(new TableRow(SideLabel("Height"), _railHeight));
+
             var root = new TableLayout { Padding = new Padding(12, 12, 12, 0), Spacing = new Size(0, 8) };
-            root.Rows.Add(Section("Curve",
-                Row(RowLabel("The curve is the"), _role),
-                Row(RowLabel(""), pickBtn, flipBtn)));
-            root.Rows.Add(Section("Dimensions (" + unit + ")",
-                Row(RowLabel("Total height"), _height, measureBtn),
-                Row(RowLabel(""), autoBtn, _autoInfo),
+            root.Rows.Add(new GroupBox { Text = "The curve is the stair's", Content = Beside(Picker(Roles, _roleButtons, v => Choose(() => _o.Role = v)), curveButtons) });
+            root.Rows.Add(Section("Steps (" + unit + ")",
+                Row(RowLabel("Total height"), _height, measureBtn, autoBtn),
                 Row(RowLabel("Steps"), _steps, _riserInfo),
                 Row(RowLabel("Step height"), _stepHeight),
+                Row(RowLabel("Tread depth"), _depth, _depthMode),
                 Row(RowLabel("Stair width"), _width),
-                Row(RowLabel("Pyramid"), _pyramid, _pyramidStep),
-                Row(RowLabel("Steps snap to"), _pyramidAlign),
-                Row(RowLabel("Tread depth"), _depth, _depthMode)));
-            root.Rows.Add(Section("Structure (" + unit + ")",
-                Row(RowLabel("Type"), _structure),
-                Row(_thicknessLabel, _thickness),
-                Row(RowLabel(""), _showNumbers)));
-            root.Rows.Add(Section("Rest steps (landings)",
+                Row(RowLabel("Pyramid"), _pyramid, _pyramidStep, _pyramidAlign)));
+            root.Rows.Add(Section("Landings (rest steps)",
                 Row(RowLabel("At step"), _restNumber, _restCustomDepth, _restDepth, addRest),
-                new TableRow(RowLabel(""), new TableCell(restListRow, true)),
-                Row(RowLabel(""), _squareLandings)));
-            root.Rows.Add(Section("Railings (" + unit + ")",
-                Row(RowLabel("Side"), _railSide),
-                Row(RowLabel("Type"), _railType),
-                Row(RowLabel("Height"), _railHeight)));
+                new TableRow(RowLabel(""), new TableCell(restListRow, true))));
+            root.Rows.Add(new GroupBox { Text = "Structure (" + unit + ")", Content = Beside(Picker(Structures, _structureButtons, v => Choose(() => _o.Structure = v)), structureSide) });
+            root.Rows.Add(new GroupBox { Text = "Railing (" + unit + ")", Content = Beside(Picker(Railings, _railButtons, ChooseRailing), railSide) });
 
             // The settings scroll; the status line and the buttons stay in view below them, so
             // a window limited by the screen (high resolution, large display scaling) loses nothing.
@@ -431,7 +450,6 @@ namespace Stairs.UI
 
             _depthMode.SelectedIndexChanged += (s, e) => { _depth.Enabled = DepthMode == Core.TreadDepthMode.Custom; Rebuild(); };
             _steps.ValueChanged += (s, e) => StepsChanged();
-            _structure.SelectedIndexChanged += (s, e) => { StructureChanged(); Rebuild(); };
             _restCustomDepth.CheckedChanged += (s, e) => { _restDepth.Enabled = _restCustomDepth.Checked == true; };
             _restList.SelectedIndexChanged += (s, e) => { _removeRest.Enabled = _restList.SelectedIndex >= 0; };
             _height.ValueChanged += (s, e) => Rebuild();
@@ -445,9 +463,7 @@ namespace Stairs.UI
             _showNumbers.CheckedChanged += (s, e) => Rebuild();
             _squareLandings.CheckedChanged += (s, e) => Rebuild();
             _railHeight.ValueChanged += (s, e) => Rebuild();
-            _railSide.SelectedIndexChanged += (s, e) => { RailSideChanged(); Rebuild(); };
-            _railType.SelectedIndexChanged += (s, e) => Rebuild();
-            _role.SelectedIndexChanged += (s, e) => Rebuild();
+            _railSide.SelectedIndexChanged += (s, e) => Rebuild();
             _livePreview.CheckedChanged += (s, e) =>
             {
                 if (_livePreview.Checked != true) _conduit.SetResult(null);
@@ -455,14 +471,89 @@ namespace Stairs.UI
             };
         }
 
-        /// <summary>Shows the slab depth or the plank thickness, whichever the structure uses.</summary>
-        private void StructureChanged()
+        /// <summary>A row of picture buttons, one per choice.</summary>
+        private static TableLayout Picker<T>((T value, string name, string icon, string tip)[] items,
+            Dictionary<T, ToggleButton> buttons, Action<T> select)
         {
-            bool slab = SelectedIndexTag(_structure) == (int)Core.StairStructure.Slab;
-            _thicknessLabel.Text = slab ? "Slab depth" : "Plank thickness";
+            var row = new TableRow();
+            foreach (var (value, name, icon, tip) in items)
+            {
+                var b = new ToggleButton
+                {
+                    Text = name,
+                    ToolTip = tip,
+                    Image = SvgIcons.Load(icon, PickIcon, PickIcon),
+                    ImagePosition = ButtonImagePosition.Above,
+                    Size = new Size(PickWidth, PickHeight),
+                    Font = SystemFonts.Default(SystemFonts.Default().Size * PickFontScale),
+                };
+                b.Click += (s, e) => select(value);
+                buttons[value] = b;
+                row.Cells.Add(new TableCell(b, false));
+            }
+            var grid = new TableLayout { Spacing = new Size(6, 0) };
+            grid.Rows.Add(row);
+            return grid;
+        }
+
+        /// <summary>Pictures, then the settings that go with them, centred beside them.</summary>
+        private static TableLayout Beside(Control pictures, Control settings)
+        {
+            var side = new TableLayout();
+            side.Rows.Add(new TableRow { ScaleHeight = true });
+            side.Rows.Add(settings);
+            side.Rows.Add(new TableRow { ScaleHeight = true });
+            var t = new TableLayout { Spacing = new Size(16, 0), Padding = new Padding(4, 2, 4, 4) };
+            t.Rows.Add(new TableRow(new TableCell(pictures, false), new TableCell(side, false), new TableCell(null, true)));
+            return t;
+        }
+
+        private static Label SideLabel(string text) =>
+            new Label { Text = text, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+
+        private static StackLayout Line(params Control[] controls)
+        {
+            var line = new StackLayout { Orientation = Orientation.Horizontal, Spacing = 6, VerticalContentAlignment = VerticalAlignment.Center };
+            foreach (var c in controls) line.Items.Add(c);
+            return line;
+        }
+
+        /// <summary>Applies a choice from one of the picture rows.</summary>
+        private void Choose(Action change)
+        {
+            if (_suspend) return;
+            SyncOptions(); // keeps what is typed, e.g. the slab depth before switching to planks
+            change();
+            ShowChoices();
+            Rebuild();
+        }
+
+        /// <summary>No railing, or a railing type; a railing goes on the side chosen beside the pictures.</summary>
+        private void ChooseRailing(int value) => Choose(() =>
+        {
+            if (value == NoRailing) { _o.Railing = Core.RailSide.None; return; }
+            _o.RailType = (Core.RailType)value;
+            _o.Railing = (Core.RailSide)SelectedIndexTag(_railSide);
+        });
+
+        /// <summary>Marks the chosen pictures and shows the settings that go with them.</summary>
+        private void ShowChoices()
+        {
             bool was = _suspend;
             _suspend = true;
+            foreach (var kv in _roleButtons) kv.Value.Checked = kv.Key == _o.Role;
+            foreach (var kv in _structureButtons) kv.Value.Checked = kv.Key == _o.Structure;
+            int rail = _o.Railing == Core.RailSide.None ? NoRailing : (int)_o.RailType;
+            foreach (var kv in _railButtons) kv.Value.Checked = kv.Key == rail;
+
+            // the slab depth or the plank thickness, whichever the structure uses
+            bool slab = _o.Structure == Core.StairStructure.Slab;
+            _thicknessLabel.Text = slab ? "Slab depth" : "Plank thickness";
             _thickness.Value = slab ? _o.SlabThickness : _o.PlankThickness;
+
+            bool any = _o.Railing != Core.RailSide.None;
+            _railSide.Enabled = any;
+            _railHeight.Enabled = any;
             _suspend = was;
         }
 
@@ -471,13 +562,6 @@ namespace Stairs.UI
             bool on = _pyramid.Checked == true;
             _pyramidStep.Enabled = on;
             _pyramidAlign.Enabled = on;
-        }
-
-        private void RailSideChanged()
-        {
-            bool any = SelectedIndexTag(_railSide) != (int)Core.RailSide.None;
-            _railType.Enabled = any;
-            _railHeight.Enabled = any;
         }
 
         private static int SelectedIndexTag(DropDown dd)
@@ -502,16 +586,12 @@ namespace Stairs.UI
             _depth.Value = _o.DepthOverride;
             _depth.Enabled = _o.DepthMode == Core.TreadDepthMode.Custom;
             _steps.Value = StepCount();
-            _structure.SelectedIndex = _o.Structure == Core.StairStructure.Slab ? 0 : 1;
             _showNumbers.Checked = _o.ShowNumbers;
             _squareLandings.Checked = _o.SquareLandings;
             _railHeight.Value = _o.RailHeight;
             _restDepth.Value = _o.Width;
-            SelectByTag(_railSide, (int)_o.Railing);
-            SelectByTag(_railType, (int)_o.RailType);
-            SelectByTag(_role, (int)_o.Role);
-            StructureChanged();
-            RailSideChanged();
+            SelectByTag(_railSide, (int)(_o.Railing == Core.RailSide.None ? Core.RailSide.Both : _o.Railing));
+            ShowChoices();
             RefreshRestList();
             _suspend = false;
         }
@@ -534,15 +614,12 @@ namespace Stairs.UI
             _o.DepthMode = DepthMode;
             if (_o.DepthMode == Core.TreadDepthMode.Custom)
                 _o.DepthOverride = _depth.Value; // otherwise the field shows the computed depth
-            _o.Structure = (Core.StairStructure)SelectedIndexTag(_structure);
             if (_o.Structure == Core.StairStructure.Slab) _o.SlabThickness = _thickness.Value;
             else _o.PlankThickness = _thickness.Value;
             _o.ShowNumbers = _showNumbers.Checked == true;
             _o.SquareLandings = _squareLandings.Checked == true;
-            _o.Railing = (Core.RailSide)SelectedIndexTag(_railSide);
-            _o.RailType = (Core.RailType)SelectedIndexTag(_railType);
+            if (_o.Railing != Core.RailSide.None) _o.Railing = (Core.RailSide)SelectedIndexTag(_railSide);
             _o.RailHeight = _railHeight.Value;
-            _o.Role = (Core.CurveRole)SelectedIndexTag(_role);
         }
 
         private void RefreshRestList()

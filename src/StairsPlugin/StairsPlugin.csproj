@@ -21,5 +21,7 @@
   <ItemGroup>
     <EmbeddedResource Include="assets\icons\*.png" Exclude="assets\icons\._*" LogicalName="%(Filename)%(Extension)" />
     <EmbeddedResource Include="assets\icons\StairsPlugin.ico" LogicalName="StairsPlugin.ico" />
+    <EmbeddedResource Include="assets\stairs\*.svg" Exclude="assets\stairs\._*" LogicalName="stairs.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="assets\railings\*.svg" Exclude="assets\railings\._*" LogicalName="railings.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
