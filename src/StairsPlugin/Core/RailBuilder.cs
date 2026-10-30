@@ -55,7 +55,8 @@ namespace Stairs.Core
             foreach (var st in steps) railStations.Add(st.S0);
             railStations.Add(sEnd);
             foreach (var z in layout.Corners)
-                if (z.TM > steps[0].S0 && z.TM < sEnd) railStations.Add(z.TM);
+                foreach (var bend in z.BendT)
+                    if (bend > steps[0].S0 && bend < sEnd) railStations.Add(bend);
             railStations.Sort();
 
             // Continuous rail line at fraction f of the rail height above each nosing:

@@ -119,6 +119,13 @@ def build_scenarios():
         ("arc over 180 inner", arc(1, 200), {"role": "inner"}, {"warn": [OVERFLOW], "steps": 11, "outside_of": ((0, 1), 1)}),
         ("arc tall 300 glass both", arc(3, 300), {"height": 8.0, "rail": "both", "rail_type": "glass"}, {}),
         ("s-curve metal both", s_curve(), {"rail": "both", "rail_type": "metal"}, {}),
+        # corners sharper than 120 degrees: the outer side goes round the pivot instead of one long miter
+        ("corner +150 inner round", corner(3.5, 150, 3.5), {"role": "inner"}, {"regular": True}),
+        ("corner -150 mid round glass both", corner(3.5, -150, 3.5), {"rail": "both", "rail_type": "glass", "height": 2.4}, {"regular": True}),
+        ("corner +165 outer round plank", corner(8, 165, 8), {"role": "outer", "structure": "plank", "height": 1.2}, {"regular": True}),
+        # a corner too sharp for the stair's width between its neighbours: warned, not hidden
+        ("zigzag too sharp for 5 m", polyline((0.3994, -0.8944), (-0.8528, 0.9881), (1.0383, 0.1515), (-0.588, 2.3037)),
+         {"role": "inner", "width": 5.0, "height": 5.0, "structure": "plank"}, {"warn": ["too sharp for a stair this wide"], "tiling": False}),
         # bends tighter than the stair reaches inward: the treads fan there instead of overlapping
         ("tight s inner", tight_s(), {"role": "inner", "height": 1.2}, {}),
         ("tight s inner flip glass both", tight_s(), {"role": "inner", "flip": True, "height": 1.2, "rail": "both", "rail_type": "glass"}, {}),
@@ -172,7 +179,7 @@ def build_scenarios():
         rail_type = ("glass", "metal", "cement")[i % 3]
         exp = {"regular": True}
         if role == "outer" and abs(deg) == 135:
-            exp.update(warn=[OVERFLOW], steps=14)  # the corner zones eat most of the 3.5 m legs
+            exp.update(warn=[OVERFLOW], steps=11)  # the corner zones eat most of the 3.5 m legs
         scenarios.append(("corner %+d %s %s both" % (deg, role, rail_type), corner(3.5, deg, 3.5),
                           {"role": role, "rail": "both", "rail_type": rail_type}, exp))
     return scenarios
