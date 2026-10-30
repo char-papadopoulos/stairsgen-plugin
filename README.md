@@ -18,6 +18,12 @@ adjust it.
   around the inner corner. Treads never overlap or leave gaps, at any angle.
   A smooth bend tighter than the stair is wide gets the same fan, from the
   point where the inside edge of the stair would cross itself.
+- **Sharp or rounded corners.** A corner turning more than 120° keeps its
+  sharp, pointed outer side by default. Choose **Rounded** to round that
+  side into short 30° pieces instead, so the stair no longer reaches far
+  out at very sharp turns. A corner too sharp for the stair's width, so
+  close to the next corner that its treads would overlap, is left out with
+  a warning that says how wide a stair fits there.
 - **Comfortable steps.** Tread depth follows the comfort rule
   (riser + tread ≈ 46 cm) by default. No tread's average depth goes below
   18 cm, so sharp corners get fewer, wider winders.
@@ -45,6 +51,10 @@ adjust it.
   in the command, or select a curve already in the model.
 - **Follows the curve.** Move or edit a selected curve while the settings
   window is open and the stair updates with it.
+- **A compact settings window.** Picture buttons for the curve's role, the
+  structure, the railing type and the corners, with each choice's settings
+  right beside it, in one window that fits on most screens without
+  scrolling.
 
 | Winders | Curved |
 |:---:|:---:|
@@ -103,7 +113,23 @@ Every point is kept at the first one's height. To use a flat curve already in
 the model instead, choose the **SelectCurve** option, or select the curve before
 running the command; the stair then follows that curve while the settings
 window is open. The settings window opens, and the preview updates in every
-viewport as you change a setting.
+viewport as you change a setting:
+
+- **The curve is the stair's** middle, inner edge or outer edge. **Pick
+  Curve** takes another curve; **Flip Direction** makes the stair climb from
+  the other end.
+- **Steps**: the total height (or **Measure** it from two points, or
+  **Autoconfigure** everything from it), the number of steps or the step
+  height, the tread depth and its rule, the stair width and the pyramid
+  narrowing.
+- **Landings**: rest steps at any step, and whether those in corners are
+  square.
+- **Structure**: a slab with its depth, or planks with their thickness, and
+  the step numbers. **Corners over 120°**: Sharp or Rounded.
+- **Railing**: none, glass, metal or concrete, on which side and how high.
+
+**Create Stairs** adds the stair to the model as one group. The settings are
+remembered for the next time.
 
 ## Development
 
@@ -112,7 +138,12 @@ viewport as you change a setting.
   - `StairLayout` lays out the steps, the corner zones and the tread depths.
   - `StairGeometry` builds treads, slabs and step numbers.
   - `RailBuilder` builds the railings.
-- `src/StairsPlugin/UI` holds the settings dialog and the preview display.
+- `src/StairsPlugin/UI` holds the settings dialog, the curve input and the
+  preview display.
+- The dialog's picture buttons are SVGs in `src/StairsPlugin/assets/stairs`
+  and `assets/railings`, each with a dark-theme version; `tools/make_stair_icons.py`
+  draws the stair ones. The button icons in `assets/icons` come from
+  `tools/make_icons.py`.
 
 ### Regression tests
 
@@ -133,10 +164,12 @@ to the open document. Two variants:
 
 The suite builds each scenario three times: in metres with a 1 mm and with a
 1 cm tolerance, and in millimetres. It covers
-straight lines, arcs (left, right, beyond 180°), freeform curves, polylines
-with 60°, 90°, 135° and 160° corners for every curve role, U-turns, rest
-steps, flip, every depth mode, Autoconfigure, pyramid widths, all railing types
-and the overflow warning. For each scenario it checks that:
+straight lines, arcs (left, right, beyond 180°), freeform curves with bends
+tighter than the stair, polylines with 60°, 90°, 135°, 150°, 160° and 165°
+corners for every curve role (sharp and rounded), corners too sharp to build,
+U-turns, rest steps and square corner landings, flip, every depth mode,
+Autoconfigure, pyramid widths, all railing types including the concrete
+balusters, and the overflow warning. For each scenario it checks that:
 
 - slabs, planks and railings are valid closed solids or valid breps;
 - treads tile the stair without overlaps or gaps;
