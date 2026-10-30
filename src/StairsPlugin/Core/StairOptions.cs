@@ -67,6 +67,7 @@ namespace Stairs.Core
 
         public System.Collections.Generic.List<RestStep> RestSteps = new System.Collections.Generic.List<RestStep>();
         public bool SquareLandings = true;     // a rest step that reaches a sharp corner fills it, square to both flights
+        public bool RoundSharpCorners = false; // corners turning over 120 degrees go round the inner corner instead of ending in a point
 
         public RailSide Railing = RailSide.None;
         public RailType RailType = RailType.Glass;

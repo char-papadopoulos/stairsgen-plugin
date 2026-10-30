@@ -42,10 +42,11 @@ namespace Stairs.Core
         // which keeps following the curve.
         internal bool Smooth;
 
-        // A corner turning more than StairLayout.RoundAbove would get an outer point sticking out
-        // more than twice the stair width. Instead its outer side goes round the pivot as a
-        // polygon of Segments small miters, as if the corner were that many gentler corners in a
-        // row; one segment is the plain miter. Each piece keeps the miter's tread areas exact.
+        // With StairOptions.RoundSharpCorners, a corner turning more than StairLayout.RoundAbove
+        // (whose outer point would stick out more than twice the stair width) has its outer side
+        // go round the pivot as a polygon of Segments small miters, as if the corner were that
+        // many gentler corners in a row; one segment is the plain miter. Each piece keeps the
+        // miter's tread areas exact.
         internal int Segments = 1;
         internal double[] BendT;      // walk stations of the outer side's bends (the polygon corners)
         internal double[] PathT;      // round corners: walk stations of the center path's points
@@ -157,7 +158,7 @@ namespace Stairs.Core
         /// <summary>Facets of curved treads and of corner fans turn at most this much.</summary>
         internal const double FacetTurn = Math.PI / 36.0;
 
-        /// <summary>Corners turning more than this get a round outer side instead of a single miter,</summary>
+        /// <summary>With RoundSharpCorners, corners turning more than this get a round outer side instead of a single miter,</summary>
         internal const double RoundAbove = 2 * Math.PI / 3;
         /// <summary>made of miters turning at most this much each.</summary>
         internal const double RoundSegmentTurn = Math.PI / 6;
@@ -167,6 +168,7 @@ namespace Stairs.Core
         PyramidAlign _align;
         double _minWidth;
         double _minGap; // shortest facet the subdivision may create
+        bool _roundSharp; // corners over RoundAbove go round the pivot
         readonly List<(double Length, double Param)> _kinks = new List<(double, double)>(); // curve kinks: arc length and parameter
         readonly Dictionary<int, CornerZone> _cornerLandings = new Dictionary<int, CornerZone>(); // rest step number -> corner it fills
 
@@ -190,6 +192,7 @@ namespace Stairs.Core
 
             double tol = o.AbsoluteTolerance;
             layout._minGap = Math.Max(tol * 10, 1e-9);
+            layout._roundSharp = o.RoundSharpCorners;
             if (o.Pyramid && o.PyramidStep > 0)
             {
                 layout._narrowing = o.PyramidStep;
@@ -790,7 +793,7 @@ namespace Stairs.Core
                 z.HalfLength = z.MidA.DistanceTo(z.MidM);
                 z.WalkLength = z.HalfLength + z.MidM.DistanceTo(z.MidB);
                 z.BendT = new[] { z.HalfLength }; // relative to T0 until the walk stations are known
-                if (Math.Abs(zoneTurn) > RoundAbove)
+                if (_roundSharp && Math.Abs(zoneTurn) > RoundAbove)
                 {
                     // round outer side: the band center runs round the pivot on a polygon whose
                     // sides touch a circle; its corners are the bends of every side line

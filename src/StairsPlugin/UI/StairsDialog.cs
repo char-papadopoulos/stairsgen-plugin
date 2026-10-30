@@ -37,6 +37,13 @@ namespace Stairs.UI
             (Core.StairStructure.Slab, "Slab", "stairs.struct_slab", "A continuous concrete slab with a sloped underside."),
             (Core.StairStructure.Plank, "Planks", "stairs.struct_plank", "Floating treads: one plank per step."),
         };
+        private static readonly (bool value, string name, string icon, string tip)[] Corners =
+        {
+            (false, "Sharp", "stairs.corner_sharp",
+                "Corners turning more than 120° end in a point, like every other corner. On a wide stair a very sharp turn's point reaches far out."),
+            (true, "Rounded", "stairs.corner_round",
+                "Corners turning more than 120° go round the inner corner, like a spiral stair, instead of ending in a long point."),
+        };
         private const int NoRailing = -1; // the railing pictures: none, or a railing type
         private static readonly (int value, string name, string icon, string tip)[] Railings =
         {
@@ -48,6 +55,7 @@ namespace Stairs.UI
         private readonly Dictionary<Core.CurveRole, ToggleButton> _roleButtons = new Dictionary<Core.CurveRole, ToggleButton>();
         private readonly Dictionary<Core.StairStructure, ToggleButton> _structureButtons = new Dictionary<Core.StairStructure, ToggleButton>();
         private readonly Dictionary<int, ToggleButton> _railButtons = new Dictionary<int, ToggleButton>();
+        private readonly Dictionary<bool, ToggleButton> _cornerButtons = new Dictionary<bool, ToggleButton>();
 
         private readonly NumericStepper _height = new NumericStepper();
         private readonly NumericStepper _stepHeight = new NumericStepper();
@@ -62,7 +70,7 @@ namespace Stairs.UI
         private string _info = ""; // shown in the status area when there are no warnings
         private readonly NumericStepper _thickness = new NumericStepper();
         private readonly Label _thicknessLabel = new Label { Text = "Slab depth", VerticalAlignment = VerticalAlignment.Center };
-        private readonly CheckBox _showNumbers = new CheckBox { Text = "Step numbers on treads", Checked = true };
+        private readonly CheckBox _showNumbers = new CheckBox { Text = "Step numbers", Checked = true, ToolTip = "Puts each step's number on its tread." };
         private readonly NumericStepper _restNumber = new NumericStepper { MinValue = 1, DecimalPlaces = 0, Increment = 1, Value = 1, Width = 64 };
         private readonly CheckBox _restCustomDepth = new CheckBox { Text = "Depth" };
         private readonly NumericStepper _restDepth = new NumericStepper { Enabled = false };
@@ -432,7 +440,14 @@ namespace Stairs.UI
             root.Rows.Add(Section("Landings (rest steps)",
                 Row(RowLabel("At step"), _restNumber, _restCustomDepth, _restDepth, addRest),
                 new TableRow(RowLabel(""), new TableCell(restListRow, true))));
-            root.Rows.Add(new GroupBox { Text = "Structure (" + unit + ")", Content = Beside(Picker(Structures, _structureButtons, v => Choose(() => _o.Structure = v)), structureSide) });
+            // structure and the sharp-corner choice share a row, so the window stays as short
+            var structureBox = new GroupBox { Text = "Structure (" + unit + ")", Content = Beside(Picker(Structures, _structureButtons, v => Choose(() => _o.Structure = v)), structureSide) };
+            var cornerPictures = new TableLayout { Padding = new Padding(4, 2, 4, 4) };
+            cornerPictures.Rows.Add(Picker(Corners, _cornerButtons, v => Choose(() => _o.RoundSharpCorners = v)));
+            var cornersBox = new GroupBox { Text = "Corners over 120°", Content = cornerPictures };
+            var structureRow = new TableLayout { Spacing = new Size(8, 0) };
+            structureRow.Rows.Add(new TableRow(new TableCell(structureBox, true), new TableCell(cornersBox, false)));
+            root.Rows.Add(structureRow);
             root.Rows.Add(new GroupBox { Text = "Railing (" + unit + ")", Content = Beside(Picker(Railings, _railButtons, ChooseRailing), railSide) });
 
             // The settings scroll; the status line and the buttons stay in view below them, so
@@ -543,6 +558,7 @@ namespace Stairs.UI
             _suspend = true;
             foreach (var kv in _roleButtons) kv.Value.Checked = kv.Key == _o.Role;
             foreach (var kv in _structureButtons) kv.Value.Checked = kv.Key == _o.Structure;
+            foreach (var kv in _cornerButtons) kv.Value.Checked = kv.Key == _o.RoundSharpCorners;
             int rail = _o.Railing == Core.RailSide.None ? NoRailing : (int)_o.RailType;
             foreach (var kv in _railButtons) kv.Value.Checked = kv.Key == rail;
 
@@ -914,6 +930,7 @@ namespace Stairs.UI
                 s.SetDouble("PlankThickness", _o.PlankThickness);
                 s.SetBool("ShowNumbers", _o.ShowNumbers);
                 s.SetBool("SquareLandings", _o.SquareLandings);
+                s.SetBool("RoundSharpCorners", _o.RoundSharpCorners);
                 s.SetInteger("RailSide", (int)_o.Railing);
                 s.SetInteger("RailType", (int)_o.RailType);
                 s.SetDouble("RailHeight", _o.RailHeight);
@@ -951,6 +968,7 @@ namespace Stairs.UI
                 o.PlankThickness = Len("PlankThickness", 4);
                 o.ShowNumbers = s.GetBool("ShowNumbers", o.ShowNumbers);
                 o.SquareLandings = s.GetBool("SquareLandings", o.SquareLandings);
+                o.RoundSharpCorners = s.GetBool("RoundSharpCorners", o.RoundSharpCorners);
                 o.Railing = (Core.RailSide)s.GetInteger("RailSide", (int)o.Railing);
                 o.RailType = (Core.RailType)s.GetInteger("RailType", (int)o.RailType);
                 o.RailHeight = Len("RailHeight", 90);

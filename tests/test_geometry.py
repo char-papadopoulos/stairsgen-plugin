@@ -88,7 +88,8 @@ def tight_s():
 # --- scenarios: (name, curve, options, expectations) ------------------------------------
 # options: role mid|inner|outer, structure slab|plank, rail none|left|right|both,
 #          rail_type glass|metal|cement, rest [(step, depth)], flip, height, depth (custom),
-#          width, pyramid (narrowing per step, center|left|right), mode comfort|fit|custom, steps (step count, as the dialog's Steps field), auto (autoconfigure)
+#          width, pyramid (narrowing per step, center|left|right), mode comfort|fit|custom, steps (step count, as the dialog's Steps field), auto (autoconfigure),
+#          square (square corner landings, default True), round (rounded corners over 120 degrees, default False)
 # expectations: warn [substrings], steps, tiling (default True), comfort (autoconfigure: riser +
 #               tread within 3 cm of the comfort sum, default True), regular (polyline, and no
 #               pyramid narrowing in a corner fan: tread
@@ -119,10 +120,12 @@ def build_scenarios():
         ("arc over 180 inner", arc(1, 200), {"role": "inner"}, {"warn": [OVERFLOW], "steps": 11, "outside_of": ((0, 1), 1)}),
         ("arc tall 300 glass both", arc(3, 300), {"height": 8.0, "rail": "both", "rail_type": "glass"}, {}),
         ("s-curve metal both", s_curve(), {"rail": "both", "rail_type": "metal"}, {}),
-        # corners sharper than 120 degrees: the outer side goes round the pivot instead of one long miter
-        ("corner +150 inner round", corner(3.5, 150, 3.5), {"role": "inner"}, {"regular": True}),
-        ("corner -150 mid round glass both", corner(3.5, -150, 3.5), {"rail": "both", "rail_type": "glass", "height": 2.4}, {"regular": True}),
-        ("corner +165 outer round plank", corner(8, 165, 8), {"role": "outer", "structure": "plank", "height": 1.2}, {"regular": True}),
+        # rounded corners (an option): corners sharper than 120 degrees go round the pivot instead of one long miter
+        ("corner +150 inner round", corner(3.5, 150, 3.5), {"role": "inner", "round": True}, {"regular": True}),
+        ("corner -150 mid round glass both", corner(3.5, -150, 3.5), {"rail": "both", "rail_type": "glass", "height": 2.4, "round": True}, {"regular": True}),
+        ("corner +165 outer round plank", corner(8, 165, 8), {"role": "outer", "structure": "plank", "height": 1.2, "round": True}, {"regular": True}),
+        ("corner +135 outer round metal both", corner(3.5, 135, 3.5), {"role": "outer", "rail": "both", "rail_type": "metal", "round": True},
+         {"warn": [OVERFLOW], "steps": 11, "regular": True}),  # shorter to walk round than the miter: fewer steps fit
         # a corner too sharp for the stair's width between its neighbours: warned, not hidden
         ("zigzag too sharp for 5 m", polyline((0.3994, -0.8944), (-0.8528, 0.9881), (1.0383, 0.1515), (-0.588, 2.3037)),
          {"role": "inner", "width": 5.0, "height": 5.0, "structure": "plank"}, {"warn": ["too sharp for a stair this wide"], "tiling": False}),
@@ -179,7 +182,7 @@ def build_scenarios():
         rail_type = ("glass", "metal", "cement")[i % 3]
         exp = {"regular": True}
         if role == "outer" and abs(deg) == 135:
-            exp.update(warn=[OVERFLOW], steps=11)  # the corner zones eat most of the 3.5 m legs
+            exp.update(warn=[OVERFLOW], steps=14)  # the corner zones eat most of the 3.5 m legs
         scenarios.append(("corner %+d %s %s both" % (deg, role, rail_type), corner(3.5, deg, 3.5),
                           {"role": role, "rail": "both", "rail_type": rail_type}, exp))
     return scenarios
@@ -269,6 +272,7 @@ try:
         o.RailType = enum("RailType", opt.get("rail_type", "glass"))
         o.Flip = opt.get("flip", False)
         o.SquareLandings = opt.get("square", True)
+        o.RoundSharpCorners = opt.get("round", False)
         o.ShowNumbers = True
         o.NumberStyle = doc.DimStyles.Current
         for number, depth in opt.get("rest", []):

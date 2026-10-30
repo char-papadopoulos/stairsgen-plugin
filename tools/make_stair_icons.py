@@ -7,6 +7,8 @@ src/StairsPlugin/assets/stairs. Pure stdlib; rerun after changing a shape or a c
 - role_mid, role_inner, role_outer: an L-shaped stair in plan, with the picked curve (blue)
   along its middle, its inner edge or its outer edge.
 - struct_slab, struct_plank: a flight in side view, as a concrete slab or as floating planks.
+- corner_sharp, corner_round: a corner turning over 120 degrees in plan, its outer side
+  ending in a point or going round the inner corner.
 - rail_none: the bare balcony edge of the railing icons (src/StairsPlugin/assets/railings),
   for "no railing" next to them.
 """
@@ -86,6 +88,45 @@ def structure(kind, t):
     return out
 
 
+# --- sharp corners: a turn of about 125 degrees in plan, the stair on its outside ------------
+PIVOT, LEG, BAND = (24.0, 29.0), (9.0, 17.0), 7.0  # inner corner, leg run (dx, dy), stair width
+
+
+def corner(kind, t):
+    px, py = PIVOT
+    ln = math.hypot(*LEG)
+    n1 = (-LEG[1] / ln, -LEG[0] / ln)  # outward, square to the left leg
+    n2 = (LEG[1] / ln, -LEG[0] / ln)   # outward, square to the right leg
+    a1, a2 = math.atan2(n1[1], n1[0]), math.atan2(n2[1], n2[0])
+    feet = [(px - LEG[0], py + LEG[1]), (px + LEG[0], py + LEG[1])]
+    out1 = [(x + n1[0] * BAND, y + n1[1] * BAND) for x, y in (feet[0], PIVOT)]
+    out2 = [(x + n2[0] * BAND, y + n2[1] * BAND) for x, y in (PIVOT, feet[1])]
+    if kind == "sharp":
+        rise = math.atan2(LEG[1], LEG[0])  # each leg's slope; the outer sides meet straight above the pivot
+        outer = [(px, py - BAND / math.cos(rise))]
+    else:
+        outer = [(px + BAND * math.cos(a), py + BAND * math.sin(a))
+                 for a in [a1 + (a2 - a1) * k / 12 for k in range(13)]]
+    band = [feet[0], out1[0]] + outer + [out2[1], feet[1], PIVOT]
+    out = [poly(band, t["band"], t["stroke"])]
+    # treads: square cut lines on the legs, a fan from the inner corner round the turn
+    for f in (0.35, 0.7):
+        for (fx, fy), n in ((feet[0], n1), (feet[1], n2)):
+            x, y = fx + (px - fx) * f, fy + (py - fy) * f
+            out.append(line([(x, y), (x + n[0] * BAND, y + n[1] * BAND)], t["tread"], 1))
+    for k in (1, 2, 3):
+        a = a1 + (a2 - a1) * k / 4
+        if kind == "sharp":
+            d = (math.cos(a), math.sin(a))
+            reach = BAND / max(d[0] * n1[0] + d[1] * n1[1], d[0] * n2[0] + d[1] * n2[1])
+        else:
+            reach = BAND
+        out.append(line([PIVOT, (px + math.cos(a) * reach, py + math.sin(a) * reach)], t["tread"], 1))
+    # the outer side, where the two choices differ
+    out.append(line([out1[0], out1[1]] + outer + [out2[0], out2[1]], t["curve"], 2.4))
+    return out
+
+
 # --- no railing: the balcony edge of the railing icons, bare --------------------------------
 L, DEPTH, SLAB = 2.0, 0.9, 0.14  # as in tools/make_railing_icons.py
 SIZE, MARGIN = 48, 2.5
@@ -123,6 +164,7 @@ def main():
         icons = {"role_" + k: role(k, t) for k in ("mid", "inner", "outer")}
         icons.update({"struct_" + k: structure(k, t) for k in ("slab", "plank")})
         icons["rail_none"] = rail_none(t)
+        icons.update({"corner_" + k: corner(k, t) for k in ("sharp", "round")})
         for name, parts in icons.items():
             with open(os.path.join(OUT, name + suffix + ".svg"), "w") as fh:
                 fh.write(svg(parts))
