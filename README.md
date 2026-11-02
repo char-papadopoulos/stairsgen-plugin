@@ -1,8 +1,8 @@
-# Stairs for Rhino 8
+# Stairs for Rhino 8/9
 
-**Version 1.2.0**
+**Version 1.2.1**
 
-A Rhino 8 plug-in that builds a complete staircase along a flat curve. Draw
+A Rhino 8/9 plug-in that builds a complete staircase along a flat curve. Draw
 the curve, set the total height, and the plug-in lays out the steps, the
 structure, the step numbers and the railings, with a live preview while you
 adjust it.
@@ -66,7 +66,7 @@ adjust it.
 
 ## Requirements
 
-- Rhino 8 (developed and tested on Rhino 8.35, macOS on Apple silicon).
+- Rhino 8/9 (developed and tested on Rhino 8/9, macOS on Apple silicon).
 - To build: the .NET SDK 7 or later.
 
 The plug-in targets `net7.0` and references only `RhinoCommon` and
