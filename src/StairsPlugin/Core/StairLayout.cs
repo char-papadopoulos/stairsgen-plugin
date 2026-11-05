@@ -144,7 +144,6 @@ namespace Stairs.Core
         const double MaxMergedTurn = 175 * Math.PI / 180;
 
         double _curveLength;
-        IFormatProvider _numbers;   // numbers in warnings
         double _narrowing;          // pyramid: how much narrower each step is (0: constant width)
         PyramidAlign _align;
         double _minWidth;
@@ -156,7 +155,6 @@ namespace Stairs.Core
         public static StairLayout Compute(StairOptions o)
         {
             var layout = new StairLayout();
-            layout._numbers = o.NumberFormat;
             var curve = o.Curve.DuplicateCurve();
             if (o.Flip) curve.Reverse();
             layout.WalkCurve = curve;
@@ -194,7 +192,7 @@ namespace Stairs.Core
             if (layout._narrowing > 0 && layout._narrowing * (n - 1) > (layout.B - layout.A) - layout._minWidth + 1e-9)
             {
                 int first = 2 + (int)Math.Floor(((layout.B - layout.A) - layout._minWidth) / layout._narrowing + 1e-9);
-                layout.Warnings.Add(string.Format(layout._numbers,
+                layout.Warnings.Add(string.Format(
                     "Pyramid width: steps {0}+ are kept at the minimum step width {1:0.###}.", first, layout._minWidth));
             }
 
@@ -236,7 +234,7 @@ namespace Stairs.Core
                 }
                 if (!isRest && !warnedMinimum && layout.TreadDepth < o.MinAverageDepth)
                 {
-                    layout.Warnings.Add(string.Format(layout._numbers,
+                    layout.Warnings.Add(string.Format(
                         "Tread depth {0:0.###} is below the minimum average tread depth {1:0.###}; treads were widened.",
                         layout.TreadDepth, o.MinAverageDepth));
                     warnedMinimum = true;
@@ -957,7 +955,7 @@ namespace Stairs.Core
                     var drop = a.SB - a.SC >= b.SC - b.SA ? a : b;
                     double half = Math.Abs(Math.Tan(drop.Turn / 2));
                     double share = Math.Abs(drop.InnerOff) / Math.Max(width, 1e-12);
-                    Warnings.Add(string.Format(_numbers,
+                    Warnings.Add(string.Format(
                         "A corner with {0:F0}° between its legs is too sharp for a stair this wide so close to the next corner: "
                         + "its treads overlap. Up to about {1:0.##} wide fits there; or lengthen the legs, or put the curve on the stair's other edge.",
                         LegsApart(drop.Turn), (b.SC - a.SC) / half / Math.Max(share, 1e-12)));
@@ -1256,7 +1254,7 @@ namespace Stairs.Core
                 double reach = left ? B : -A; // how far the band reaches to the inside of the bend
                 if (reach > tol && 1 / k.Length < reach - tol)
                 {
-                    Warnings.Add(string.Format(_numbers,
+                    Warnings.Add(string.Format(
                         "The curve bends tighter (radius {0:0.###}) than the stair reaches inward ({1:0.###}); treads there overlap.",
                         1 / k.Length, reach));
                     return;

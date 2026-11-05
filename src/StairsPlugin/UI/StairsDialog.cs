@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Eto.Drawing;
 using Eto.Forms;
 using Rhino;
@@ -119,7 +118,6 @@ namespace Stairs.UI
         {
             _doc = doc;
             _o = options;
-            _o.NumberFormat = _numberFormat;
             _o.Curve = curve;
             _curveId = curveId;
             _cm = RhinoMath.UnitScale(UnitSystem.Centimeters, doc.ModelUnitSystem);
@@ -323,49 +321,26 @@ namespace Stairs.UI
         private string Length(double value) => value.ToString("F" + (_decimals + 1), _numberFormat);
 
         /// <summary>
-        /// Number format matching the numeric fields. On macOS their separator depends on the Eto
-        /// inside Rhino: Rhino 8's formats them with the system locale (e.g. a decimal comma), Rhino
-        /// 9's with the .NET culture, which in Rhino is invariant. So a field is asked what it shows.
-        /// On Windows they use the .NET culture.
+        /// Number format matching the numeric fields. On macOS Eto formats them with the
+        /// system locale (e.g. a decimal comma), while .NET in Rhino runs invariant.
         /// </summary>
         private static System.Globalization.NumberFormatInfo FieldNumberFormat()
         {
             var nfi = (System.Globalization.NumberFormatInfo)System.Globalization.CultureInfo.CurrentCulture.NumberFormat.Clone();
-            if (!Eto.Platform.Instance.IsMac) return nfi;
-            string sep = null;
-            try { sep = ShownSeparator() ?? LocaleSeparator(); }
-            catch (Exception) { /* keep the .NET culture */ }
-            if (!string.IsNullOrEmpty(sep)) nfi.NumberDecimalSeparator = sep;
-            return nfi;
-        }
-
-        /// <summary>The decimal separator a numeric field shows; null if it cannot be read.</summary>
-        private static string ShownSeparator()
-        {
-            using (var field = new NumericStepper { DecimalPlaces = 1, Value = 1.5 })
+            try
             {
-                var view = field.ControlObject; // an NSView; by reflection, as this project builds without the macOS API
-                if (!(view?.GetType().GetProperty("Subviews")?.GetValue(view) is Array parts)) return null;
-                foreach (var part in parts)
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
                 {
-                    var text = part?.GetType().GetProperty("StringValue")?.GetValue(part) as string;
-                    var sep = new string((text ?? "").Where(c => !char.IsDigit(c)).ToArray());
-                    if (sep.Length > 0) return sep;
+                    var nsLocale = asm.GetType("Foundation.NSLocale", false);
+                    if (nsLocale == null) continue;
+                    var current = nsLocale.GetProperty("CurrentLocale")?.GetValue(null);
+                    if (current?.GetType().GetProperty("DecimalSeparator")?.GetValue(current) is string sep && sep.Length > 0)
+                        nfi.NumberDecimalSeparator = sep;
+                    break;
                 }
             }
-            return null;
-        }
-
-        private static string LocaleSeparator()
-        {
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var nsLocale = asm.GetType("Foundation.NSLocale", false);
-                if (nsLocale == null) continue;
-                var current = nsLocale.GetProperty("CurrentLocale")?.GetValue(null);
-                return current?.GetType().GetProperty("DecimalSeparator")?.GetValue(current) as string;
-            }
-            return null;
+            catch (Exception) { /* keep the .NET culture */ }
+            return nfi;
         }
 
         private void BuildLayout()
