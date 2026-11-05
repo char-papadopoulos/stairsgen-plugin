@@ -94,6 +94,10 @@ def oval():
 def pentagon():
     return polyline((10.1254, 6.9078), (9.2388, 8.3251), (7.6169, 7.9198), (7.5012, 6.2521), (9.0515, 5.6266), (10.1254, 6.9078))
 
+def sharp_after_open():
+    """A corner with 79 degrees between its legs, then one with only 23: on a 1.5 m stair they share a fan that turns 56."""
+    return polyline((-0.123, -0.714), (0.59, -0.02), (-0.648, 0.832), (5.417, -0.406))
+
 def tight_s():
     """A freeform S whose bends (radius 0.33 and 0.41) are tighter than the 1 m stair width."""
     pts = [(-0.01, -0.7853), (-0.4248, -0.0244), (-0.0283, 0.3636), (0.5021, 0.9321),
@@ -107,6 +111,7 @@ def tight_s():
 #          width, pyramid (narrowing per step, center|left|right), mode comfort|fit|custom, steps (step count, as the dialog's Steps field), auto (autoconfigure),
 #          square (square corner landings, default True), round (rounded corners over 120 degrees, default False)
 # fans_under (expectation): every corner or bend zone turns less than this many degrees
+# reach_over, reach_under (expectations): how far the stair's outer points get from the curve, in metres
 # expectations: warn [substrings], steps, tiling (default True), comfort (autoconfigure: riser +
 #               tread within 3 cm of the comfort sum, default True), regular (polyline, and no
 #               pyramid narrowing in a corner fan: tread
@@ -143,6 +148,9 @@ def build_scenarios():
         ("corner +165 outer round plank", corner(8, 165, 8), {"role": "outer", "structure": "plank", "height": 1.2, "round": True}, {"regular": True}),
         ("corner +135 outer round metal both", corner(3.5, 135, 3.5), {"role": "outer", "rail": "both", "rail_type": "metal", "round": True},
          {"warn": [OVERFLOW], "steps": 11, "regular": True}),  # shorter to walk round than the miter: fewer steps fit
+        # a very sharp corner rounds even when the corner before it leaves its fan a gentle total turn
+        ("sharp corner in a gentle fan sharp", sharp_after_open(), {"width": 1.5, "height": 3.0, "rest": [(12, 0.0)], "square": False, "rail": "both", "rail_type": "metal"}, {"reach_over": 3.0}),
+        ("sharp corner in a gentle fan rounded", sharp_after_open(), {"width": 1.5, "height": 2.0, "rest": [(9, 0.0)], "round": True, "rail": "both", "rail_type": "metal"}, {"reach_under": 2.0}),
         # corners close together: same way one fan, opposite ways a shared cut line through both pivots
         ("kinked polyline", kinked(), {"width": 1.5, "height": 1.1}, {}),
         ("kinked polyline rest step planks", kinked(), {"width": 1.5, "height": 0.5, "rest": [(2, 0.0)], "structure": "plank"}, {}),
@@ -345,6 +353,17 @@ try:
             want = res.Layout.SidePoint((st.S0 + st.S1) / 2, (st.A + st.B) / 2, st.TopZ)
             if te.Plane.Origin.DistanceTo(want) > 1e-6 * k:
                 errors.append("number %d is %.4g off the center line" % (st.Number, te.Plane.Origin.DistanceTo(want))); break
+        # how far the stair's outer points get from the curve: a point on a sharp corner, not on a rounded one
+        if "reach_over" in exp or "reach_under" in exp:
+            far = 0.0
+            for st in res.Layout.Steps:
+                for off in (st.A, st.B):
+                    for t in st.Samples:
+                        p = res.Layout.SidePoint(t, off, 0)
+                        ok, u = res.Layout.WalkCurve.ClosestPoint(p)
+                        far = max(far, p.DistanceTo(res.Layout.WalkCurve.PointAt(u)))
+            if far / k < exp.get("reach_over", 0): errors.append("stair reaches only %.3g from the curve" % (far / k))
+            if far / k > exp.get("reach_under", 1e9): errors.append("stair reaches %.3g from the curve" % (far / k))
         # no fan sweeps more of the curve than the bend it belongs to
         if "fans_under" in exp:
             for z in res.Layout.Corners:

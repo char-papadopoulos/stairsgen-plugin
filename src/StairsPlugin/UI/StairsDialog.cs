@@ -40,9 +40,9 @@ namespace Stairs.UI
         private static readonly (bool value, string name, string icon, string tip)[] Corners =
         {
             (false, "Sharp", "stairs.corner_sharp",
-                "Corners turning more than 120° end in a point, like every other corner. On a wide stair a very sharp turn's point reaches far out."),
+                "Corners whose legs are less than 60° apart end in a point, like every other corner. On a wide stair a very sharp corner's point reaches far out."),
             (true, "Rounded", "stairs.corner_round",
-                "Corners turning more than 120° go round the inner corner, like a spiral stair, instead of ending in a long point."),
+                "Corners whose legs are less than 60° apart go round the inner corner, like a spiral stair, instead of ending in a long point."),
         };
         private const int NoRailing = -1; // the railing pictures: none, or a railing type
         private static readonly (int value, string name, string icon, string tip)[] Railings =
@@ -84,7 +84,7 @@ namespace Stairs.UI
         };
         private readonly DropDown _railSide = new DropDown { Width = FieldWidth + 24 };
         private readonly NumericStepper _railHeight = new NumericStepper();
-        private readonly CheckBox _livePreview = new CheckBox { Text = "Live preview", Checked = true };
+        private readonly CheckBox _livePreview = new CheckBox { Text = "Live preview", Checked = true, Width = 104 }; // wider than it asks for: macOS rounds its measured 97.5 down and cuts the label
         private static readonly Color WarningColor = Color.FromArgb(230, 150, 50);
         private readonly Label _status = new Label
         {
@@ -444,7 +444,7 @@ namespace Stairs.UI
             var structureBox = new GroupBox { Text = "Structure (" + unit + ")", Content = Beside(Picker(Structures, _structureButtons, v => Choose(() => _o.Structure = v)), structureSide) };
             var cornerPictures = new TableLayout { Padding = new Padding(4, 2, 4, 4) };
             cornerPictures.Rows.Add(Picker(Corners, _cornerButtons, v => Choose(() => _o.RoundSharpCorners = v)));
-            var cornersBox = new GroupBox { Text = "Corners over 120°", Content = cornerPictures };
+            var cornersBox = new GroupBox { Text = "Corners sharper than 60°", Content = cornerPictures };
             var structureRow = new TableLayout { Spacing = new Size(8, 0) };
             structureRow.Rows.Add(new TableRow(new TableCell(structureBox, true), new TableCell(cornersBox, false)));
             root.Rows.Add(structureRow);

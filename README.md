@@ -18,12 +18,13 @@ adjust it.
   around the inner corner. Treads never overlap or leave gaps, at any angle.
   A smooth bend tighter than the stair is wide gets the same fan, from the
   point where the inside edge of the stair would cross itself.
-- **Sharp or rounded corners.** A corner turning more than 120° keeps its
-  sharp, pointed outer side by default. Choose **Rounded** to round that
-  side into short 30° pieces instead, so the stair no longer reaches far
-  out at very sharp turns. A corner too sharp for the stair's width, so
-  close to the next corner that its treads would overlap, is left out with
-  a warning that says how wide a stair fits there.
+- **Sharp or rounded corners.** A corner sharper than 60° between its two
+  legs keeps a pointed outer side by default, like every other corner. Choose
+  **Rounded** to take the outer edge round the inner corner instead, like a
+  spiral stair, so a wide stair no longer reaches far out in a long point. A
+  corner too sharp for the stair's width, so close to the next corner that its
+  treads would overlap, is left out with a warning that says how wide a stair
+  fits there.
 - **Comfortable steps.** Tread depth follows the comfort rule
   (riser + tread ≈ 46 cm) by default. No tread's average depth goes below
   18 cm, so sharp corners get fewer, wider winders.
@@ -125,7 +126,7 @@ viewport as you change a setting:
 - **Landings**: rest steps at any step, and whether those in corners are
   square.
 - **Structure**: a slab with its depth, or planks with their thickness, and
-  the step numbers. **Corners over 120°**: Sharp or Rounded.
+  the step numbers. **Corners sharper than 60°**: Sharp or Rounded.
 - **Railing**: none, glass, metal or concrete, on which side and how high.
 
 **Create Stairs** adds the stair to the model as one group. The settings are

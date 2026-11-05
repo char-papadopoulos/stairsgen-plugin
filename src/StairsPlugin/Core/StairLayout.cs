@@ -135,7 +135,7 @@ namespace Stairs.Core
         /// <summary>Facets of curved treads and of corner fans turn at most this much.</summary>
         internal const double FacetTurn = Math.PI / 36.0;
 
-        /// <summary>With RoundSharpCorners, corners turning more than this get a round outer side instead of a single miter,</summary>
+        /// <summary>With RoundSharpCorners, corners turning more than this (legs under 60° apart) get a round outer side instead of a single miter,</summary>
         internal const double RoundAbove = 2 * Math.PI / 3;
         /// <summary>made of miters turning at most this much each.</summary>
         internal const double RoundSegmentTurn = Math.PI / 6;
@@ -722,8 +722,8 @@ namespace Stairs.Core
                 if (1 + dot < 1e-3)
                 {
                     Warnings.Add(string.Format(
-                        "The curve turns back on itself ({0:F0} degrees); that corner cannot be built.",
-                        Math.Abs(turn) * 180 / Math.PI));
+                        "The curve turns back on itself ({0:F0}° between its legs); that corner cannot be built.",
+                        LegsApart(turn)));
                     continue;
                 }
                 double sc = curve.GetLength(new Interval(curve.Domain.Min, pk));
@@ -805,6 +805,22 @@ namespace Stairs.Core
             };
         }
 
+        /// <summary>The angle between a corner's two legs, as seen in the drawing, in degrees (its turn in radians).</summary>
+        static double LegsApart(double turn) => 180 - Math.Abs(turn) * 180 / Math.PI;
+
+        /// <summary>
+        /// Whether a fan counts as a very sharp corner for rounding: its total turn or any real corner
+        /// in it turning its way. Corners sharing a fan can add up to a gentle total: a corner with
+        /// 23° between its legs is still very sharp when the corner before it turns the other way.
+        /// </summary>
+        static bool IsSharp(List<Kink> kinks, SideCorner fan, double turn)
+        {
+            if (Math.Abs(turn) > RoundAbove) return true;
+            for (int k = fan.First; k < fan.Last; k++)
+                if (kinks[k].Turn * turn > 0 && Math.Abs(kinks[k].Turn) > RoundAbove) return true;
+            return false;
+        }
+
         /// <summary>
         /// One side line of the band, as a polygon offset of the legs: a leg whose side line would
         /// run backwards is too short for this offset and drops out, and its neighbours meet
@@ -883,8 +899,8 @@ namespace Stairs.Core
                         if (zoneTurn * c.Turn <= 0 || 1 + tA * tB < 1e-3)
                         {
                             Warnings.Add(string.Format(
-                                "A corner turning {0:F0} degrees is too sharp for a stair this wide: its treads overlap.",
-                                Math.Abs(c.Turn) * 180 / Math.PI));
+                                "A corner with {0:F0}° between its legs is too sharp for a stair this wide: its treads overlap.",
+                                LegsApart(c.Turn)));
                             continue;
                         }
                     }
@@ -903,7 +919,7 @@ namespace Stairs.Core
 
                     // the outer side's bends
                     var path = new List<Point3d>();
-                    if (_roundSharp && Math.Abs(zoneTurn) > RoundAbove)
+                    if (_roundSharp && IsSharp(kinks, c, zoneTurn))
                     {
                         // a polygon round the pivot whose sides touch a circle; each piece is a small miter
                         int m = (int)Math.Ceiling(Math.Abs(zoneTurn) / RoundSegmentTurn - 1e-9);
@@ -940,9 +956,9 @@ namespace Stairs.Core
                     double half = Math.Abs(Math.Tan(drop.Turn / 2));
                     double share = Math.Abs(drop.InnerOff) / Math.Max(width, 1e-12);
                     Warnings.Add(string.Format(
-                        "A corner turning {0:F0} degrees is too sharp for a stair this wide so close to the next corner: "
+                        "A corner with {0:F0}° between its legs is too sharp for a stair this wide so close to the next corner: "
                         + "its treads overlap. Up to about {1:0.##} wide fits there; or lengthen the legs, or put the curve on the stair's other edge.",
-                        Math.Abs(drop.Turn) * 180 / Math.PI, (b.SC - a.SC) / half / Math.Max(share, 1e-12)));
+                        LegsApart(drop.Turn), (b.SC - a.SC) / half / Math.Max(share, 1e-12)));
                     zones.Remove(drop);
                     changed = true;
                 }
