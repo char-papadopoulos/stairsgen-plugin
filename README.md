@@ -1,8 +1,8 @@
-# Stairs for Rhino 8/9
+# Stairs for Rhino 8 / 9
 
 **Version 1.3.0**
 
-A Rhino 8/9 plug-in that builds a complete staircase along a flat curve. Draw
+A Rhino 8 / 9 plug-in that builds a complete staircase along a flat curve. Draw
 the curve, set the total height, and the plug-in lays out the steps, the
 structure, the step numbers and the railings, with a live preview while you
 adjust it.
@@ -66,7 +66,7 @@ adjust it.
 
 ## Requirements
 
-- Rhino 8/9 (developed and tested on Rhino 8/9, macOS on Apple silicon).
+- Rhino 8 / 9 (developed and tested on Rhino 8 / 9, macOS on Apple silicon).
 - To build: the .NET SDK 7 or later.
 
 The plug-in targets `net7.0` and references only `RhinoCommon` and
@@ -90,8 +90,8 @@ Download `Stairs-<version>.zip` from the
 follow the `INSTALL.txt` inside. In short:
 
 - **macOS:** copy `Stairs.rhp` into
-  `~/Library/Application Support/McNeel/Rhinoceros/8.0/MacPlugIns/`, then restart
-  Rhino.
+  `~/Library/Application Support/McNeel/Rhinoceros/9.0/MacPlugIns/` (`8.0` for
+  Rhino 8), then restart Rhino.
 - **Windows:** keep `Stairs.rhp` in a permanent folder and drag it onto the Rhino
   window, or use Tools > Options > Plug-ins > Install….
 
@@ -99,10 +99,10 @@ Rhino only loads a new build of the plug-in at startup, so restart it after ever
 update. `_PlugInManager` should list Stairs as loaded.
 
 To install your own build instead, copy the built DLL with the `.rhp` extension, for
-example on macOS:
+example on macOS with Rhino 9 (`8.0` in the path for Rhino 8):
 
 ```bash
-cp src/StairsPlugin/bin/Release/StairsPlugin.dll "$HOME/Library/Application Support/McNeel/Rhinoceros/8.0/MacPlugIns/Stairs.rhp"
+cp src/StairsPlugin/bin/Release/StairsPlugin.dll "$HOME/Library/Application Support/McNeel/Rhinoceros/9.0/MacPlugIns/Stairs.rhp"
 ```
 
 ## Usage
