@@ -67,7 +67,7 @@ namespace Stairs.Core
                 }
 
                 if (o.ShowNumbers)
-                    result.Numbers.Add(MakeNumber(layout, o, step, plan, step.A, step.B, tol));
+                    result.Numbers.Add(MakeNumber(layout, o, step, step.A, step.B));
             }
 
             if (o.Structure == StairStructure.Slab && wholeSlab == null && result.Steps.Count > 1)
@@ -523,23 +523,12 @@ namespace Stairs.Core
             return Brep.CreateFromBox(box);
         }
 
-        static TextEntity MakeNumber(StairLayout layout, StairOptions o, StepInfo step,
-            List<Point3d> plan, double a, double b, double tol)
+        static TextEntity MakeNumber(StairLayout layout, StairOptions o, StepInfo step, double a, double b)
         {
-            // place the number at the plan centroid of the tread so it is always centered,
-            // also for landings, corner treads and inner/outer curve roles
-            Point3d pos;
-            PolylineCurve pl = null;
-            if (plan != null && plan.Count >= 3)
-            {
-                var closed = new List<Point3d>(plan) { plan[0] };
-                pl = new PolylineCurve(closed.ToArray());
-            }
-            var ap = pl != null && pl.IsClosed ? AreaMassProperties.Compute(pl) : null;
-            if (ap != null && ap.Centroid.IsValid)
-                pos = ap.Centroid;
-            else
-                pos = BandPoint(layout, (step.S0 + step.S1) / 2, (a + b) / 2, 0);
+            // on the band's center line, halfway along the tread, so the numbers follow one clean
+            // line through straight treads, winders and landings alike (a tread's center of mass
+            // moves outward on a winder, and differently for each tread)
+            var pos = BandPoint(layout, (step.S0 + step.S1) / 2, (a + b) / 2, 0);
 
             var tan = layout.Direction((step.S0 + step.S1) / 2);
             var right = Vector3d.CrossProduct(tan, Vector3d.ZAxis); // reader's left-to-right when facing up-slope

@@ -1,6 +1,6 @@
 # Stairs for Rhino 8/9
 
-**Version 1.2.1**
+**Version 1.3.0**
 
 A Rhino 8/9 plug-in that builds a complete staircase along a flat curve. Draw
 the curve, set the total height, and the plug-in lays out the steps, the

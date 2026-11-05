@@ -28,7 +28,7 @@ import clr, System, traceback, time, math, json, os
 clr.AddReference("RhinoCommon")
 import Rhino
 from Rhino import RhinoDoc
-from Rhino.Geometry import (Point3d, Vector3d, Plane, Arc, ArcCurve, LineCurve, PolylineCurve, PolyCurve,
+from Rhino.Geometry import (Point3d, Vector3d, Plane, Arc, ArcCurve, Ellipse, LineCurve, PolylineCurve, PolyCurve,
                             NurbsCurve, Curve, AreaMassProperties, Transform, BoundingBox)
 
 OUT = "/tmp/stairs_test_result.txt"
@@ -78,6 +78,22 @@ def s_curve():
     pts = [Point3d(0, 0, 0), Point3d(2, 0, 0), Point3d(3, 1.5, 0), Point3d(5, 2.5, 0), Point3d(7, 2.5, 0)]
     return NurbsCurve.CreateInterpolatedCurve(pts, 3)
 
+def kinked():
+    """A hand-drawn polyline: corners of up to 40 degrees closer together than a 1.5 m stair is wide."""
+    return polyline((0.4014, -0.9165), (0.4477, -0.3074), (0.2313, 0.0009), (0.2405, 0.1047), (0.2787, 0.2265), (0.2326, 0.4838),
+                    (0.1997, 0.5696), (0.1756, 0.6381), (0.1221, 0.7868), (0.0968, 0.9806), (0.0993, 1.0318), (0.0999, 1.1327))
+
+def close_zigzag():
+    """Turns of 137 and 151 degrees whose fans reach each other on a 1.5 m stair."""
+    return polyline((7.697, -2.2801), (11.2919, -0.1734), (6.9271, 0.8165), (10.9167, 1.9548))
+
+def oval():
+    """A closed ellipse whose start and end meet on a bend tighter than a 1.5 m stair reaches inward."""
+    return Ellipse(Plane.WorldXY, 2.46, 1.1).ToNurbsCurve()
+
+def pentagon():
+    return polyline((10.1254, 6.9078), (9.2388, 8.3251), (7.6169, 7.9198), (7.5012, 6.2521), (9.0515, 5.6266), (10.1254, 6.9078))
+
 def tight_s():
     """A freeform S whose bends (radius 0.33 and 0.41) are tighter than the 1 m stair width."""
     pts = [(-0.01, -0.7853), (-0.4248, -0.0244), (-0.0283, 0.3636), (0.5021, 0.9321),
@@ -90,6 +106,7 @@ def tight_s():
 #          rail_type glass|metal|cement, rest [(step, depth)], flip, height, depth (custom),
 #          width, pyramid (narrowing per step, center|left|right), mode comfort|fit|custom, steps (step count, as the dialog's Steps field), auto (autoconfigure),
 #          square (square corner landings, default True), round (rounded corners over 120 degrees, default False)
+# fans_under (expectation): every corner or bend zone turns less than this many degrees
 # expectations: warn [substrings], steps, tiling (default True), comfort (autoconfigure: riser +
 #               tread within 3 cm of the comfort sum, default True), regular (polyline, and no
 #               pyramid narrowing in a corner fan: tread
@@ -126,6 +143,20 @@ def build_scenarios():
         ("corner +165 outer round plank", corner(8, 165, 8), {"role": "outer", "structure": "plank", "height": 1.2, "round": True}, {"regular": True}),
         ("corner +135 outer round metal both", corner(3.5, 135, 3.5), {"role": "outer", "rail": "both", "rail_type": "metal", "round": True},
          {"warn": [OVERFLOW], "steps": 11, "regular": True}),  # shorter to walk round than the miter: fewer steps fit
+        # corners close together: same way one fan, opposite ways a shared cut line through both pivots
+        ("kinked polyline", kinked(), {"width": 1.5, "height": 1.1}, {}),
+        ("kinked polyline rest step planks", kinked(), {"width": 1.5, "height": 0.5, "rest": [(2, 0.0)], "structure": "plank"}, {}),
+        ("kinked polyline metal both", kinked(), {"width": 1.5, "height": 1.1, "rail": "both", "rail_type": "metal"}, {}),
+        ("kinked polyline inner edge", kinked(), {"role": "inner", "width": 1.5, "height": 1.2}, {}),
+        ("kinked polyline outer edge", kinked(), {"role": "outer", "width": 1.5, "height": 1.2}, {}),
+        ("close zigzag sharp", close_zigzag(), {"width": 1.5, "height": 5.0}, {}),
+        ("close zigzag rounded metal both", close_zigzag(), {"width": 1.5, "height": 3.9, "round": True, "rail": "both", "rail_type": "metal"}, {}),
+        ("close zigzag inner fit", close_zigzag(), {"role": "inner", "width": 1.5, "height": 5.0, "mode": "fit"}, {}),
+        ("two left corners sharing a fan", polyline((0, 0), (4, 0), (4.3, 0.5), (4.3, 4)), {"width": 2.0, "height": 2.4}, {}),
+        # a closed curve is not one big bend: each tight end fans on its own
+        ("oval from its tight end", oval(), {"width": 1.5, "height": 5.0}, {"fans_under": 150}),
+        ("oval inner fit", oval(), {"role": "inner", "width": 1.0, "height": 3.0, "mode": "fit"}, {"fans_under": 150, "tiling": False}),  # a full ring
+        ("pentagon rest step", pentagon(), {"width": 1.5, "height": 3.9, "rest": [(10, 0.0)], "square": False}, {"tiling": False}),  # passes over its own start
         # a corner too sharp for the stair's width between its neighbours: warned, not hidden
         ("zigzag too sharp for 5 m", polyline((0.3994, -0.8944), (-0.8528, 0.9881), (1.0383, 0.1515), (-0.588, 2.3037)),
          {"role": "inner", "width": 5.0, "height": 5.0, "structure": "plank"}, {"warn": ["too sharp for a stair this wide"], "tiling": False}),
@@ -309,6 +340,16 @@ try:
         bad = [i for i, b in enumerate(steps) if not (b.IsValid and b.IsSolid)]
         if bad: errors.append("step breps not valid closed solids: %s" % bad[:6])
         if res.Numbers.Count != n_steps: errors.append("%d numbers, expected %d" % (res.Numbers.Count, n_steps))
+        # each number on the band's center line, halfway along its tread
+        for st, te in zip(list(res.Layout.Steps), list(res.Numbers)):
+            want = res.Layout.SidePoint((st.S0 + st.S1) / 2, (st.A + st.B) / 2, st.TopZ)
+            if te.Plane.Origin.DistanceTo(want) > 1e-6 * k:
+                errors.append("number %d is %.4g off the center line" % (st.Number, te.Plane.Origin.DistanceTo(want))); break
+        # no fan sweeps more of the curve than the bend it belongs to
+        if "fans_under" in exp:
+            for z in res.Layout.Corners:
+                if abs(math.degrees(z.Turn)) >= exp["fans_under"]:
+                    errors.append("a fan turns %.0f degrees" % abs(math.degrees(z.Turn))); break
 
         # railings
         side = opt.get("rail", "none")

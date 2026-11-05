@@ -6,13 +6,16 @@
 #   tests/run_tests.sh path/to/Some.dll     test that DLL instead (no build)
 #   tests/run_tests.sh "" corner arc        only scenarios whose name contains a filter
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RHINOCODE="/Applications/Rhino 8.app/Contents/Resources/bin/rhinocode"
+for v in 9 8; do
+    RHINOCODE="/Applications/Rhino $v.app/Contents/Resources/bin/rhinocode"
+    [ -x "$RHINOCODE" ] && break
+done
 OUT=/tmp/stairs_test_result.txt
 DLL="$1"
 shift 2>/dev/null
 
 if ! "$RHINOCODE" list 2>/dev/null | grep -q rhinocode_; then
-    echo "No running Rhino with a script server found (start Rhino 8, then StartScriptServer)." >&2
+    echo "No running Rhino with a script server found (start Rhino, then StartScriptServer)." >&2
     exit 2
 fi
 if [ -z "$DLL" ]; then

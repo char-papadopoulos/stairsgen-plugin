@@ -31,7 +31,6 @@ namespace Stairs.Core
         public double Turn;                // signed turn angle in radians (+ = left)
         public double InnerOff, OuterOff;  // band offsets of the inner and outer side
         public Point3d Pivot;              // inner corner of the band (z = 0)
-        public Point3d MidA, MidM, MidB;   // band center line through the zone (z = 0)
         public Vector3d UIn, UOut;         // unit vectors from the inner toward the outer side, before / after
         internal double DepthSign;         // band offset -> depth from the inner side
         internal double OffsetAfter;       // walk station minus curve arc length past this zone
@@ -41,28 +40,27 @@ namespace Stairs.Core
         // fan from the pivot (where the inner side line crosses itself) to the outer side line,
         // which keeps following the curve.
         internal bool Smooth;
-
-        // With StairOptions.RoundSharpCorners, a corner turning more than StairLayout.RoundAbove
-        // (whose outer point would stick out more than twice the stair width) has its outer side
-        // go round the pivot as a polygon of Segments small miters, as if the corner were that
-        // many gentler corners in a row; one segment is the plain miter. Each piece keeps the
-        // miter's tread areas exact.
-        internal int Segments = 1;
-        internal double[] BendT;      // walk stations of the outer side's bends (the polygon corners)
-        internal double[] PathT;      // round corners: walk stations of the center path's points
-        internal Point3d[] PathPoint; // round corners: the center path, from MidA round to MidB
-
-        /// <summary>Unit vector square to the k-th side of the round corner's polygon (0: arm before, Segments: arm after).</summary>
-        Vector3d SideNormal(int k)
-        {
-            var n = UIn;
-            n.Rotate(Turn * k / Segments, Vector3d.ZAxis);
-            return n;
-        }
         internal double MidOff;                 // band offset of the center line
         internal Func<double, Point3d> OuterAt; // outer side point (z = 0) at curve arc length s
         internal double[] WalkTable, ArcTable;  // walk stations and curve arc lengths through the zone
         internal double WalkLength, HalfLength; // walk length through the zone, and up to TM
+
+        // A corner's fan runs from the pivot to the outer side, which is the path OuterPath: normally
+        // a square cut line, the miter point and a square cut line again. Corners close together
+        // change its ends and bends (see StairLayout.BuildCornerZones), and rounded corners
+        // (StairOptions.RoundSharpCorners) have a polygon round the pivot as their bends.
+        internal Point3d[] OuterPath; // the outer side through the zone, first and last on the zone's end cut lines
+        internal Point3d[] PathPoint; // the center path: OuterPath scaled toward the pivot
+        internal double[] PathT;      // walk stations of the path points
+        internal double[] BendT;      // walk stations of the outer side's bends
+
+        /// <summary>The piece of the paths at walk station t, and how far along it t is.</summary>
+        void PathPiece(double t, out int i, out double f)
+        {
+            i = 0;
+            while (i < PathT.Length - 2 && t > PathT[i + 1]) i++;
+            f = Math.Min(1, Math.Max(0, (t - PathT[i]) / Math.Max(PathT[i + 1] - PathT[i], 1e-15)));
+        }
 
         /// <summary>Curve arc length of the cut line at walk station t (tight bends).</summary>
         internal double ArcAt(double t) => Interpolate(WalkTable, ArcTable, t);
@@ -86,24 +84,8 @@ namespace Stairs.Core
         internal Point3d MidPoint(double t)
         {
             if (Smooth) return SidePoint(t, MidOff);
-            if (Segments > 1)
-            {
-                if (t <= PathT[0]) return PathPoint[0];
-                for (int i = 1; i < PathT.Length; i++)
-                    if (t <= PathT[i])
-                    {
-                        double f = (t - PathT[i - 1]) / Math.Max(PathT[i] - PathT[i - 1], 1e-15);
-                        return PathPoint[i - 1] + (PathPoint[i] - PathPoint[i - 1]) * f;
-                    }
-                return PathPoint[PathPoint.Length - 1];
-            }
-            if (t <= TM)
-            {
-                double f = TM - T0 > 1e-12 ? Math.Min(1, Math.Max(0, (t - T0) / (TM - T0))) : 1;
-                return MidA + (MidM - MidA) * f;
-            }
-            double g = T1 - TM > 1e-12 ? Math.Min(1, Math.Max(0, (t - TM) / (T1 - TM))) : 0;
-            return MidM + (MidB - MidM) * g;
+            PathPiece(t, out int i, out double f);
+            return PathPoint[i] + (PathPoint[i + 1] - PathPoint[i]) * f;
         }
 
         /// <summary>Unit direction of the cut line at walk station t, from the pivot outward.</summary>
@@ -116,24 +98,19 @@ namespace Stairs.Core
         }
 
         /// <summary>
-        /// Point of the cut line at walk station t on the band side line at the given
-        /// offset. Side lines are mitered at the bisector, so the point lies on the
-        /// side line of the arm the cut line leans toward.
+        /// Point of the cut line at walk station t on the band side line at the given offset:
+        /// straight from the pivot (inner side) to the outer side line.
         /// </summary>
         internal Point3d SidePoint(double t, double offset)
         {
-            if (Smooth)
+            Point3d outer;
+            if (Smooth) outer = OuterAt(ArcAt(t));
+            else
             {
-                // straight from the pivot (inner side) to the outer side line
-                var outer = OuterAt(ArcAt(t));
-                double f = (offset - InnerOff) / (OuterOff - InnerOff);
-                return Pivot + (outer - Pivot) * f;
+                PathPiece(t, out int i, out double u);
+                outer = OuterPath[i] + (OuterPath[i + 1] - OuterPath[i]) * u;
             }
-            double depth = (offset - InnerOff) * DepthSign;
-            var e = FanDir(t);
-            double k = Math.Max(e * UIn, e * UOut);
-            for (int j = 1; j < Segments; j++) k = Math.Max(k, e * SideNormal(j));
-            return Pivot + e * (depth / Math.Max(k, 1e-9));
+            return Pivot + (outer - Pivot) * ((offset - InnerOff) / (OuterOff - InnerOff));
         }
     }
 
@@ -162,6 +139,9 @@ namespace Stairs.Core
         internal const double RoundAbove = 2 * Math.PI / 3;
         /// <summary>made of miters turning at most this much each.</summary>
         internal const double RoundSegmentTurn = Math.PI / 6;
+
+        /// <summary>Legs turning more than this from each other do not meet: their side lines hardly cross.</summary>
+        const double MaxMergedTurn = 175 * Math.PI / 180;
 
         double _curveLength;
         double _narrowing;          // pyramid: how much narrower each step is (0: constant width)
@@ -296,7 +276,32 @@ namespace Stairs.Core
                 layout.Warnings.Add("No steps fit on the curve.");
 
             layout.UsedLength = s - layout.StartStation;
+            layout.WarnCrossingCutLines(s);
             return layout;
+        }
+
+        /// <summary>
+        /// The safety net behind the corner zones: neighbouring cut lines must not cross. Where they
+        /// do, whatever the cause, the treads overlap, and nothing else would say so.
+        /// </summary>
+        void WarnCrossingCutLines(double end)
+        {
+            const int max = 400;
+            double length = end - StartStation;
+            if (length <= _minGap || B - A <= 0 || Warnings.Exists(w => w.Contains("overlap"))) return; // already said
+            int n = Math.Min(max, Math.Max(16, (int)Math.Ceiling(length / ((B - A) / 12))));
+            Point3d a0 = SidePoint(StartStation, A, 0), b0 = SidePoint(StartStation, B, 0);
+            for (int i = 1; i <= n; i++)
+            {
+                double t = StartStation + length * i / n;
+                Point3d a1 = SidePoint(t, A, 0), b1 = SidePoint(t, B, 0);
+                if (SegmentsCross(a0, b0, a1, b1, out double u, out double v) && u > 0.01 && u < 0.99 && v > 0.01 && v < 0.99)
+                {
+                    Warnings.Add("The curve turns too much too quickly for a stair this wide: some treads overlap. Use a narrower stair or a smoother curve, or put the curve on the stair's other edge.");
+                    return;
+                }
+                a0 = a1; b0 = b1;
+            }
         }
 
         /// <summary>Tread depth from the comfort rule (riser + tread = ComfortSum), clamped for very high risers.</summary>
@@ -699,18 +704,8 @@ namespace Stairs.Core
         {
             var curve = WalkCurve;
             double midOff = (A + B) / 2;
-            var zones = new List<CornerZone>();
             var spans = new List<double> { 0 }; // arc lengths where the smooth stretches of the curve end
-
-            // every corner of the curve, so a corner's zone can be checked against its neighbours
-            var kinkLengths = new List<double>();
-            for (double q = curve.Domain.Min; curve.GetNextDiscontinuity(Continuity.G1_continuous, q, curve.Domain.Max, out double qk) && qk > q; q = qk)
-            {
-                var a = Horizontal(curve.DerivativeAt(qk, 1, CurveEvaluationSide.Below));
-                var b = Horizontal(curve.DerivativeAt(qk, 1, CurveEvaluationSide.Above));
-                if (!a.IsZero && !b.IsZero && Math.Abs(Math.Atan2(a.X * b.Y - a.Y * b.X, a * b)) >= Math.PI / 360)
-                    kinkLengths.Add(curve.GetLength(new Interval(curve.Domain.Min, qk)));
-            }
+            var kinks = new List<Kink>();
 
             double p = curve.Domain.Min;
             while (curve.GetNextDiscontinuity(Continuity.G1_continuous, p, curve.Domain.Max, out double pk))
@@ -731,101 +726,19 @@ namespace Stairs.Core
                         Math.Abs(turn) * 180 / Math.PI));
                     continue;
                 }
-
-                var z = new CornerZone();
-                bool innerIsLeft = turn > 0;
-                z.InnerOff = innerIsLeft ? B : A;
-                z.OuterOff = innerIsLeft ? A : B;
-                z.DepthSign = innerIsLeft ? -1 : 1;
                 double sc = curve.GetLength(new Interval(curve.Domain.Min, pk));
-                z.SC = sc;
                 _kinks.Add((sc, pk));
                 spans.Add(sc);
-
-                // the pivot is where the inner side lines of both arms cross; exact for straight
-                // arms, refined numerically when an arm is curved near the kink
-                double e = Math.Abs(z.InnerOff) * Math.Tan(Math.Abs(turn) / 2);
-                double sa = sc - e, sb = sc + e;
-
-                // The inner sides of both legs meet e before and after the corner. Past a
-                // neighbouring corner (or far past an end of the curve) there is no such point:
-                // the stair is too wide to turn this sharply between its corners.
-                double before = kinkLengths.FindLast(k => k < sc - 1e-9 * (1 + _curveLength));
-                double after = kinkLengths.Find(k => k > sc + 1e-9 * (1 + _curveLength));
-                bool hasBefore = kinkLengths.Exists(k => k < sc - 1e-9 * (1 + _curveLength));
-                bool hasAfter = kinkLengths.Exists(k => k > sc + 1e-9 * (1 + _curveLength));
-                if (hasBefore && sa < before - tol || hasAfter && sb > after + tol)
-                {
-                    // the inward reach that would fit, as a stair width (the reach is the width,
-                    // or half of it when the curve is the middle line)
-                    double room = Math.Min(hasBefore ? sc - before : double.MaxValue, hasAfter ? after - sc : double.MaxValue);
-                    double share = Math.Abs(z.InnerOff) / Math.Max(B - A, 1e-12);
-                    Warnings.Add(string.Format(
-                        "A corner turning {0:F0} degrees is too sharp for a stair this wide so close to the next corner: "
-                        + "its treads overlap. Up to about {1:0.##} wide fits there; or lengthen the legs, or put the curve on the stair's other edge.",
-                        Math.Abs(turn) * 180 / Math.PI, room / Math.Tan(Math.Abs(turn) / 2) / Math.Max(share, 1e-12)));
-                    continue;
-                }
-                RefinePivot(z.InnerOff, sc, ref sa, ref sb, tol);
-                CurveFrame(sa, CurveEvaluationSide.Below, out Point3d pA, out Vector3d tA);
-                CurveFrame(sb, CurveEvaluationSide.Above, out Point3d pB, out Vector3d tB);
-                pA.Z = 0; pB.Z = 0;
-                double zoneTurn = Math.Atan2(tA.X * tB.Y - tA.Y * tB.X, tA * tB);
-                if (zoneTurn * turn <= 0 || 1 + tA * tB < 1e-3)
-                {
-                    Warnings.Add(string.Format(
-                        "A corner turning {0:F0} degrees is too sharp for a stair this wide: its treads overlap.",
-                        Math.Abs(turn) * 180 / Math.PI));
-                    continue;
-                }
-                z.Turn = zoneTurn;
-                var leftIn = Vector3d.CrossProduct(Vector3d.ZAxis, tA);
-                var leftOut = Vector3d.CrossProduct(Vector3d.ZAxis, tB);
-                z.UIn = leftIn * z.DepthSign;
-                z.UOut = leftOut * z.DepthSign;
-                z.Pivot = pA + leftIn * z.InnerOff;
-                z.MidA = pA + leftIn * midOff;
-                z.MidB = pB + leftOut * midOff;
-                z.MidM = LineCross(z.MidA, tA, z.MidB, tB);
-                z.SA = sa;
-                z.SB = sb;
-                z.MidOff = midOff;
-                z.HalfLength = z.MidA.DistanceTo(z.MidM);
-                z.WalkLength = z.HalfLength + z.MidM.DistanceTo(z.MidB);
-                z.BendT = new[] { z.HalfLength }; // relative to T0 until the walk stations are known
-                if (_roundSharp && Math.Abs(zoneTurn) > RoundAbove)
-                {
-                    // round outer side: the band center runs round the pivot on a polygon whose
-                    // sides touch a circle; its corners are the bends of every side line
-                    int m = (int)Math.Ceiling(Math.Abs(zoneTurn) / RoundSegmentTurn - 1e-9);
-                    double rMid = Math.Abs(midOff - z.InnerOff);
-                    double h = rMid * Math.Tan(Math.Abs(zoneTurn) / (2 * m)); // half a polygon side
-                    z.Segments = m;
-                    z.WalkLength = 2 * m * h;
-                    z.HalfLength = z.WalkLength / 2;
-                    z.PathT = new double[m + 2];
-                    z.PathPoint = new Point3d[m + 2];
-                    z.BendT = new double[m];
-                    z.PathPoint[0] = z.MidA;
-                    for (int k = 0; k < m; k++)
-                    {
-                        var dir = z.UIn;
-                        dir.Rotate(zoneTurn * (k + 0.5) / m, Vector3d.ZAxis);
-                        z.PathPoint[k + 1] = z.Pivot + dir * (rMid / Math.Cos(Math.Abs(zoneTurn) / (2 * m)));
-                        z.PathT[k + 1] = z.BendT[k] = h + 2 * h * k;
-                    }
-                    z.PathPoint[m + 1] = z.MidB;
-                    z.PathT[m + 1] = z.WalkLength;
-                }
-                z.Subdivisions = Math.Max(1, (int)Math.Ceiling(Math.Abs(z.Turn) / 2 / FacetTurn - 1e-9));
-                zones.Add(z);
+                var at = curve.PointAt(pk);
+                kinks.Add(new Kink { S = sc, Turn = turn, Point = new Point3d(at.X, at.Y, 0), TIn = tIn, TOut = tOut });
             }
+            var zones = BuildCornerZones(kinks, midOff, tol);
             spans.Add(_curveLength);
             for (int k = 0; k + 1 < spans.Count; k++)
                 FindTightBends(spans[k], spans[k + 1], midOff, tol, zones);
 
             // walk stations, in order along the curve: a zone is walked along the band center
-            zones.Sort((x, y) => x.SA.CompareTo(y.SA));
+            zones.Sort((x, y) => x.SC.CompareTo(y.SC));
             double offset = 0;
             foreach (var z in zones)
             {
@@ -840,8 +753,7 @@ namespace Stairs.Core
                 else
                 {
                     for (int k = 0; k < z.BendT.Length; k++) z.BendT[k] += z.T0;
-                    if (z.PathT != null)
-                        for (int k = 0; k < z.PathT.Length; k++) z.PathT[k] += z.T0;
+                    for (int k = 0; k < z.PathT.Length; k++) z.PathT[k] += z.T0;
                 }
                 offset += z.WalkLength - (z.SB - z.SA);
                 z.OffsetAfter = offset;
@@ -851,6 +763,285 @@ namespace Stairs.Core
                 Corners.Add(z);
             }
             WarnTightBends(tol);
+        }
+
+        /// <summary>A corner of the curve.</summary>
+        sealed class Kink
+        {
+            public double S, Turn;      // curve arc length; signed turn (+ = left)
+            public Point3d Point;       // z = 0
+            public Vector3d TIn, TOut;  // unit tangents before and after
+        }
+
+        /// <summary>
+        /// A corner of one of the band's side lines, where the side lines of the legs First and
+        /// Last meet (leg k runs up to corner k of the curve, so it joins corners First..Last-1).
+        /// </summary>
+        sealed class SideCorner
+        {
+            public int First, Last;     // the legs that meet here
+            public double Turn;         // signed turn from one to the other
+            public Point3d Point;       // where they meet
+            public double SIn, SOut;    // that point as arc length along each leg
+        }
+
+        /// <summary>
+        /// Where the side lines at band offset 'off' of two legs meet, each leg taken as the straight
+        /// line through the corner next to the meeting point, with the tangent at that corner.
+        /// </summary>
+        static SideCorner MeetLegs(List<Kink> kinks, int first, int last, double off)
+        {
+            Kink a = kinks[first], b = kinks[last - 1];
+            var la = Vector3d.CrossProduct(Vector3d.ZAxis, a.TIn);
+            var lb = Vector3d.CrossProduct(Vector3d.ZAxis, b.TOut);
+            double turn = 0;
+            for (int k = first; k < last; k++) turn += kinks[k].Turn;
+            var at = LineCross(a.Point + la * off, a.TIn, b.Point + lb * off, b.TOut);
+            return new SideCorner
+            {
+                First = first, Last = last, Turn = turn, Point = at,
+                SIn = a.S + (at - a.Point) * a.TIn,
+                SOut = b.S + (at - b.Point) * b.TOut,
+            };
+        }
+
+        /// <summary>
+        /// One side line of the band, as a polygon offset of the legs: a leg whose side line would
+        /// run backwards is too short for this offset and drops out, and its neighbours meet
+        /// directly. Returns where the remaining legs meet.
+        /// </summary>
+        static List<SideCorner> SideLine(List<Kink> kinks, double off)
+        {
+            var legs = new List<int>();
+            for (int k = 0; k <= kinks.Count; k++) legs.Add(k);
+            while (true)
+            {
+                var corners = new List<SideCorner>();
+                for (int k = 0; k + 1 < legs.Count; k++) corners.Add(MeetLegs(kinks, legs[k], legs[k + 1], off));
+                int worst = -1;
+                double shortest = -1e-9;
+                for (int k = 1; k + 1 < legs.Count; k++)
+                {
+                    double length = corners[k].SIn - corners[k - 1].SOut;
+                    if (length >= shortest) continue;
+                    // neighbours that would turn right back on each other have no meeting point: leave the leg
+                    double turn = 0;
+                    for (int c = legs[k - 1]; c < legs[k + 1]; c++) turn += kinks[c].Turn;
+                    if (Math.Abs(turn) > MaxMergedTurn) continue;
+                    worst = k;
+                    shortest = length;
+                }
+                if (worst < 0) return corners;
+                legs.RemoveAt(worst);
+            }
+        }
+
+        /// <summary>
+        /// The corner zones. Each side line of the band is worked out on its own (SideLine); each
+        /// of its corners that turns toward that side is a pivot, where a fan starts, reaching
+        /// from the cut line square to the leg before to the one square to the leg after.
+        /// Corners close together therefore need no special case on one side: their legs simply
+        /// drop out and they share one pivot. Fans from opposite sides can still reach each
+        /// other: both then stop at the one line through their two pivots, each pivot being on
+        /// the other fan's outer side, so the cut lines never cross. A cut line far longer than
+        /// the stair is wide means no stair this wide can turn there: that corner is dropped
+        /// with a warning.
+        /// </summary>
+        List<CornerZone> BuildCornerZones(List<Kink> kinks, double midOff, double tol)
+        {
+            double width = B - A;
+            double eps = Math.Max(tol * 1e-3, 1e-9);
+            var left = SideLine(kinks, B);
+            var right = SideLine(kinks, A);
+
+            var zones = new List<CornerZone>();
+            var sides = new Dictionary<CornerZone, SideCorner>();
+            var starts = new Dictionary<CornerZone, Point3d>();
+            var ends = new Dictionary<CornerZone, Point3d>();
+            var bends = new Dictionary<CornerZone, List<Point3d>>();
+            void Build(List<SideCorner> side, List<SideCorner> other, bool isLeft)
+            {
+                foreach (var c in side)
+                {
+                    if (c.Turn > 0 != isLeft) continue; // turning away from this side: the outer side of a fan
+                    double inner = isLeft ? B : A, outer = isLeft ? A : B;
+                    double sa = c.SIn, sb = c.SOut;
+                    Kink ka = kinks[c.First], kb = kinks[c.Last - 1];
+                    Vector3d tA = ka.TIn, tB = kb.TOut;
+                    Point3d pA = ka.Point + tA * (sa - ka.S), pB = kb.Point + tB * (sb - kb.S);
+                    double zoneTurn = c.Turn;
+                    bool single = c.Last == c.First + 1;
+                    if (single && (c.First == 0 || sa >= kinks[c.First - 1].S) && (c.Last == kinks.Count || sb <= kinks[c.Last].S))
+                    {
+                        // exact for straight legs, refined numerically when a leg is curved near the corner
+                        double sc = kinks[c.First].S;
+                        RefinePivot(inner, sc, ref sa, ref sb, tol);
+                        CurveFrame(sa, CurveEvaluationSide.Below, out pA, out tA);
+                        CurveFrame(sb, CurveEvaluationSide.Above, out pB, out tB);
+                        pA.Z = 0; pB.Z = 0;
+                        zoneTurn = Math.Atan2(tA.X * tB.Y - tA.Y * tB.X, tA * tB);
+                        if (zoneTurn * c.Turn <= 0 || 1 + tA * tB < 1e-3)
+                        {
+                            Warnings.Add(string.Format(
+                                "A corner turning {0:F0} degrees is too sharp for a stair this wide: its treads overlap.",
+                                Math.Abs(c.Turn) * 180 / Math.PI));
+                            continue;
+                        }
+                    }
+
+                    var z = new CornerZone { Turn = zoneTurn, InnerOff = inner, OuterOff = outer, MidOff = midOff, SA = sa, SB = sb };
+                    z.SC = single ? kinks[c.First].S : (kinks[c.First].S + kinks[c.Last - 1].S) / 2;
+                    z.DepthSign = isLeft ? -1 : 1;
+                    var leftIn = Vector3d.CrossProduct(Vector3d.ZAxis, tA);
+                    var leftOut = Vector3d.CrossProduct(Vector3d.ZAxis, tB);
+                    z.UIn = leftIn * z.DepthSign;
+                    z.UOut = leftOut * z.DepthSign;
+                    z.Pivot = pA + leftIn * inner;
+                    double reach = Math.Abs(outer - inner);
+                    starts[z] = z.Pivot + z.UIn * reach;
+                    ends[z] = z.Pivot + z.UOut * reach;
+
+                    // the outer side's bends
+                    var path = new List<Point3d>();
+                    if (_roundSharp && Math.Abs(zoneTurn) > RoundAbove)
+                    {
+                        // a polygon round the pivot whose sides touch a circle; each piece is a small miter
+                        int m = (int)Math.Ceiling(Math.Abs(zoneTurn) / RoundSegmentTurn - 1e-9);
+                        for (int k = 0; k < m; k++)
+                        {
+                            var dir = z.UIn;
+                            dir.Rotate(zoneTurn * (k + 0.5) / m, Vector3d.ZAxis);
+                            path.Add(z.Pivot + dir * (reach / Math.Cos(Math.Abs(zoneTurn) / (2 * m))));
+                        }
+                    }
+                    else if (single)
+                        path.Add(LineCross(pA + leftIn * outer, tA, pB + leftOut * outer, tB));
+                    else
+                        foreach (var q in other)
+                            if (q.First >= c.First && q.Last <= c.Last) path.Add(q.Point);
+                    bends[z] = path;
+                    sides[z] = c;
+                    zones.Add(z);
+                }
+            }
+            Build(left, right, true);
+            Build(right, left, false);
+            zones.Sort((x, y) => x.SC.CompareTo(y.SC));
+
+            // fans from opposite sides that reach each other meet at the line through their pivots
+            for (bool changed = true; changed;)
+            {
+                changed = false;
+                for (int i = 0; i + 1 < zones.Count && !changed; i++)
+                {
+                    CornerZone a = zones[i], b = zones[i + 1];
+                    if (a.Turn * b.Turn > 0 || a.SB - b.SA <= 2 * width) continue;
+                    var drop = a.SB - a.SC >= b.SC - b.SA ? a : b;
+                    double half = Math.Abs(Math.Tan(drop.Turn / 2));
+                    double share = Math.Abs(drop.InnerOff) / Math.Max(width, 1e-12);
+                    Warnings.Add(string.Format(
+                        "A corner turning {0:F0} degrees is too sharp for a stair this wide so close to the next corner: "
+                        + "its treads overlap. Up to about {1:0.##} wide fits there; or lengthen the legs, or put the curve on the stair's other edge.",
+                        Math.Abs(drop.Turn) * 180 / Math.PI, (b.SC - a.SC) / half / Math.Max(share, 1e-12)));
+                    zones.Remove(drop);
+                    changed = true;
+                }
+            }
+            // Fans from opposite sides reach each other when their square cut lines would cross, or
+            // when one spans corners of the other, whose legs dropped out of its side line.
+            bool Reach(CornerZone x, CornerZone y) => x.Turn * y.Turn < 0
+                && (x.SB > y.SA + eps || sides[x].First < sides[y].Last && sides[y].First < sides[x].Last);
+
+            // A fan inside a bigger one from the other side gets no fan of its own, and its pivot is
+            // one more bend on the bigger fan's outer side, if it would have to sweep backwards or
+            // if the leg its square cut line ends on has dropped out of the bigger fan's side line.
+            bool StartsInside(CornerZone inner, CornerZone big) => sides[inner].First > sides[big].First && sides[inner].Last <= sides[big].Last;
+            bool EndsInside(CornerZone inner, CornerZone big) => sides[inner].Last < sides[big].Last && sides[inner].First >= sides[big].First;
+            bool Forward(CornerZone z, Point3d from, Point3d to)
+            {
+                Vector3d u = from - z.Pivot, v = to - z.Pivot;
+                return Math.Atan2(u.X * v.Y - u.Y * v.X, u * v) * Math.Sign(z.Turn) > 1e-6;
+            }
+            for (bool changed = true; changed;)
+            {
+                changed = false;
+                for (int i = 0; i + 1 < zones.Count && !changed; i++)
+                {
+                    CornerZone a = zones[i], b = zones[i + 1];
+                    if (!Reach(a, b)) continue;
+                    var aStart = i > 0 && Reach(zones[i - 1], a) ? zones[i - 1].Pivot : starts[a];
+                    var bEnd = i + 2 < zones.Count && Reach(b, zones[i + 2]) ? zones[i + 2].Pivot : ends[b];
+                    if (StartsInside(a, b) || !Forward(a, aStart, b.Pivot))
+                    {
+                        bends[b].Add(a.Pivot);
+                        zones.RemoveAt(i);
+                        changed = true;
+                    }
+                    else if (EndsInside(b, a) || !Forward(b, a.Pivot, bEnd))
+                    {
+                        bends[a].Add(b.Pivot);
+                        zones.RemoveAt(i + 1);
+                        changed = true;
+                    }
+                }
+            }
+            for (int i = 0; i + 1 < zones.Count; i++)
+            {
+                CornerZone a = zones[i], b = zones[i + 1];
+                if (!Reach(a, b)) continue;
+                double meet = (a.SB + b.SA) / 2;
+                a.SB = b.SA = meet;
+                ends[a] = b.Pivot;
+                starts[b] = a.Pivot;
+            }
+
+            foreach (var z in zones) FinishCornerZone(z, starts[z], bends[z], ends[z]);
+            return zones;
+        }
+
+        /// <summary>
+        /// The outer path and the center path of a corner zone. Bends beyond its end cut lines
+        /// are left out, and the center path is the outer path scaled toward the pivot, so every
+        /// cut line reaches both at the same walk station. Walk stations start at 0 here.
+        /// </summary>
+        void FinishCornerZone(CornerZone z, Point3d start, List<Point3d> bends, Point3d end)
+        {
+            double sign = Math.Sign(z.Turn);
+            var from = start - z.Pivot;
+            double Sweep(Point3d q)
+            {
+                var v = q - z.Pivot;
+                double a = Math.Atan2(from.X * v.Y - from.Y * v.X, from * v) * sign;
+                return a < 0 ? a + 2 * Math.PI : a;
+            }
+            double sweep = Sweep(end);
+            // in order round the pivot, so the cut lines of a fan can never cross
+            var inside = new List<(double Angle, Point3d Point)>();
+            foreach (var q in bends)
+            {
+                double a = Sweep(q);
+                if (a > 1e-9 && a < sweep - 1e-9) inside.Add((a, q));
+            }
+            inside.Sort((x, y) => x.Angle.CompareTo(y.Angle));
+            var outer = new List<Point3d> { start };
+            foreach (var (a, q) in inside)
+                if (q.DistanceTo(outer[outer.Count - 1]) > _minGap) outer.Add(q);
+            outer.Add(end);
+
+            double f = (z.MidOff - z.InnerOff) / (z.OuterOff - z.InnerOff);
+            z.OuterPath = outer.ToArray();
+            z.PathPoint = new Point3d[outer.Count];
+            z.PathT = new double[outer.Count];
+            for (int k = 0; k < outer.Count; k++)
+            {
+                z.PathPoint[k] = z.Pivot + (outer[k] - z.Pivot) * f;
+                z.PathT[k] = k == 0 ? 0 : z.PathT[k - 1] + z.PathPoint[k].DistanceTo(z.PathPoint[k - 1]);
+            }
+            z.WalkLength = z.PathT[outer.Count - 1];
+            z.BendT = new double[outer.Count - 2];
+            Array.Copy(z.PathT, 1, z.BendT, 0, z.BendT.Length);
+            z.HalfLength = z.BendT.Length == 1 ? z.BendT[0] : z.WalkLength / 2;
+            z.Subdivisions = Math.Max(1, (int)Math.Ceiling(sweep / 2 / FacetTurn - 1e-9));
         }
 
         /// <summary>
@@ -884,6 +1075,9 @@ namespace Stairs.Core
                     step = Math.Max(step, (b - a) / 2000); // keep the pairwise search bounded
                     loops.AddRange(SideLoops(a, b, off, step));
                 }
+                // A bend turning a half circle or more is no bend to fan: the two sides of a closed
+                // curve meet at its seam or across its middle, and those crossings are not loops.
+                loops.RemoveAll(l => Math.Abs(TurnBetween(l.Sa, l.Sb)) >= Math.PI);
                 loops.Sort((x, y) => (y.Sb - y.Sa).CompareTo(x.Sb - x.Sa));
                 var kept = new List<(double Sa, double Sb)>();
                 foreach (var l in loops)
@@ -959,6 +1153,20 @@ namespace Stairs.Core
             return res;
         }
 
+        /// <summary>How far the curve turns between arc lengths sa and sb (radians, + = left).</summary>
+        double TurnBetween(double sa, double sb)
+        {
+            var stations = FacetStations(WalkCurve, sa, sb, FacetTurn / 4);
+            double turn = 0;
+            for (int i = 0; i + 1 < stations.Count; i++)
+            {
+                var t0 = TangentAtLength(WalkCurve, stations[i]); t0.Z = 0;
+                var t1 = TangentAtLength(WalkCurve, stations[i + 1]); t1.Z = 0;
+                turn += Math.Atan2(t0.X * t1.Y - t0.Y * t1.X, t0 * t1);
+            }
+            return turn;
+        }
+
         /// <summary>The zone of a tight bend between curve arc lengths sa and sb, whose side line at 'inner' loops.</summary>
         CornerZone TightBend(double sa, double sb, double inner, double midOff)
         {
@@ -985,14 +1193,7 @@ namespace Stairs.Core
             };
 
             // how far the curve turns through the bend, and the walk along the band center
-            var turnStations = FacetStations(WalkCurve, sa, sb, FacetTurn / 4);
-            double turn = 0;
-            for (int i = 0; i + 1 < turnStations.Count; i++)
-            {
-                var t0 = TangentAtLength(WalkCurve, turnStations[i]); t0.Z = 0;
-                var t1 = TangentAtLength(WalkCurve, turnStations[i + 1]); t1.Z = 0;
-                turn += Math.Atan2(t0.X * t1.Y - t0.Y * t1.X, t0 * t1);
-            }
+            double turn = TurnBetween(sa, sb);
             if (turn * (innerIsLeft ? 1 : -1) <= 0) return null;
             z.Turn = turn;
             z.Subdivisions = Math.Max(1, (int)Math.Ceiling(Math.Abs(turn) / 2 / FacetTurn - 1e-9));
@@ -1014,7 +1215,6 @@ namespace Stairs.Core
             if (z.WalkLength <= _minGap) return null;
             for (int k = 1; k <= n; k++) // strictly increasing, for the lookups
                 if (z.WalkTable[k] <= z.WalkTable[k - 1]) z.WalkTable[k] = z.WalkTable[k - 1] + 1e-12;
-            z.MidA = z.MidPoint(0); // not used by tight bends; kept meaningful
             return z;
         }
 
