@@ -64,6 +64,7 @@ namespace Stairs.Core
         public bool ShowNumbers = true;
         public double NumberHeight = 0;        // 0 -> automatic
         public Rhino.DocObjects.DimensionStyle NumberStyle = null;
+        public IFormatProvider NumberFormat = null; // numbers in warnings, e.g. to match the dialog's fields (null: the .NET culture)
 
         public System.Collections.Generic.List<RestStep> RestSteps = new System.Collections.Generic.List<RestStep>();
         public bool SquareLandings = true;     // a rest step that reaches a sharp corner fills it, square to both flights
