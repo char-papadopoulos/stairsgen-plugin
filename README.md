@@ -1,61 +1,29 @@
 # Stairs for Rhino 8 / 9
 
-**Version 1.3.1**
+**Version 1.4.0**
 
-A Rhino 8 / 9 plug-in that builds a complete staircase along a flat curve. Draw
-the curve, set the total height, and the plug-in lays out the steps, the
-structure, the step numbers and the railings, with a live preview while you
-adjust it.
+Draw a curve, set the height, and StairsGen builds the whole staircase: steps,
+structure, step numbers and railings, with a live preview.
 
 ![Showcase](images/demo.gif)
 
 ## Features
 
-- **Any flat curve.** Straight lines, arcs, freeform curves and polylines
-  with sharp corners. The curve can be the stair's mid line, inner edge or
-  outer edge.
-- **Winders at corners.** A sharp corner becomes a fan of winder treads
-  around the inner corner. Treads never overlap or leave gaps, at any angle.
-  A smooth bend tighter than the stair is wide gets the same fan, from the
-  point where the inside edge of the stair would cross itself.
-- **Sharp or rounded corners.** A corner sharper than 60° between its two
-  legs keeps a pointed outer side by default, like every other corner. Choose
-  **Rounded** to take the outer edge round the inner corner instead, like a
-  spiral stair, so a wide stair no longer reaches far out in a long point. A
-  corner too sharp for the stair's width, so close to the next corner that its
-  treads would overlap, is left out with a warning that says how wide a stair
-  fits there.
-- **Comfortable steps.** Tread depth follows the comfort rule
-  (riser + tread ≈ 46 cm) by default. No tread's average depth goes below
-  18 cm, so sharp corners get fewer, wider winders.
-- **Autoconfigure.** Give only the total height: it chooses the number of
-  steps, sizes the treads so the last step ends exactly at the end of the
-  curve, and adds a rest step after every 15 steps. With square corner
-  landings on, it also puts a landing in every sharp corner and picks the
-  step count whose worst flight comes closest to the comfort rule.
-- **Structure.** A continuous concrete-like slab with a sloped underside, or
-  floating planks.
-- **Rest steps** (landings) at any step, as deep as the stair is wide or
-  with a custom depth.
-- **Square corner landings** (on by default): a rest step that reaches a
-  sharp corner fills the whole corner, with its edges square to the flights
-  before and after it instead of following the winders. With fitted treads,
-  each flight is fitted to end exactly at its landing. With a fixed tread
-  depth, the landing stretches back along the flight to meet the treads.
-- **Railings** on either or both sides: glass with a metal frame, a metal
-  railing, or a concrete wall that stops 10 cm below the handrail, with 3 cm
-  metal balusters at most 30 cm apart filling the gap.
-- **Step numbers** placed flat on each tread.
-- **Pyramid width.** Each step can be narrower than the one below, snapped
-  to the center, the left side or the right side.
-- **Draw or select the curve.** Click points to draw the stair's line right
-  in the command, or select a curve already in the model.
-- **Follows the curve.** Move or edit a selected curve while the settings
-  window is open and the stair updates with it.
-- **A compact settings window.** Picture buttons for the curve's role, the
-  structure, the railing type and the corners, with each choice's settings
-  right beside it, in one window that fits on most screens without
-  scrolling.
+- **Any flat curve**: lines, arcs, freeform curves, polylines. The curve can be
+  the stair's middle, inner edge or outer edge.
+- **Riser and tread, as in Revit.** **Fit to Curve** sizes the treads to fill
+  the curve; typing a depth fixes it.
+- **Landings at corners** (on by default). The two corners of a U-turn share
+  one landing. **Pick Corners…** switches any corner to winders.
+- **Winders** that never overlap, at any angle, including tight smooth bends.
+- **Sharp or rounded** corners under 60°.
+- **Top landing** or **leave unused** when the curve is longer than the stair.
+- **Autoconfigure** from the total height alone, by the comfort rule
+  (riser + tread ≈ 46 cm / 18").
+- **Slab or floating planks**, rest steps anywhere, pyramid (narrowing) width.
+- **Railings**: glass, metal, or concrete with balusters.
+- **Metric or imperial**: fields read and show any unit (`7in`, `18cm`, `6'-8"`).
+- **Follows the curve** while the dialog is open.
 
 | Winders | Curved |
 |:---:|:---:|
@@ -65,126 +33,47 @@ adjust it.
 | **Concrete railings** | **Floating planks** |
 | ![A curved stair with concrete walls and metal balusters up to the handrail](images/concrete.png) | ![Floating plank treads along a curve, with a metal railing](images/planks.png) |
 
-## Requirements
-
-- Rhino 8 / 9 (developed and tested on Rhino 8 / 9, macOS on Apple silicon).
-- To build: the .NET SDK 7 or later.
-
-The plug-in targets `net7.0` and references only `RhinoCommon` and
-`Eto.Forms`, which Rhino provides at runtime. The build is a single
-`StairsPlugin.dll`. It is written to run on Windows as well, but it has only
-been tested on macOS.
-
-## Build
-
-```bash
-cd src/StairsPlugin
-dotnet build -c Release
-```
-
-The plug-in is written to `src/StairsPlugin/bin/Release/StairsPlugin.dll`.
-
 ## Install
 
-Download `Stairs-<version>.zip` from the
-[Releases](https://github.com/char-papadopoulos/stairsgen-plugin/releases) page and
-follow the `INSTALL.txt` inside. In short:
+Download `Stairs-<version>.zip` from
+[Releases](https://github.com/char-papadopoulos/stairsgen-plugin/releases):
 
-- **macOS:** copy `Stairs.rhp` into
+- **macOS:** copy `Stairs.rhp` to
   `~/Library/Application Support/McNeel/Rhinoceros/9.0/MacPlugIns/` (`8.0` for
-  Rhino 8), then restart Rhino.
-- **Windows:** keep `Stairs.rhp` in a permanent folder and drag it onto the Rhino
-  window, or use Tools > Options > Plug-ins > Install….
-
-Rhino only loads a new build of the plug-in at startup, so restart it after every
-update. `_PlugInManager` should list Stairs as loaded.
-
-To install your own build instead, copy the built DLL with the `.rhp` extension, for
-example on macOS with Rhino 9 (`8.0` in the path for Rhino 8):
-
-```bash
-cp src/StairsPlugin/bin/Release/StairsPlugin.dll "$HOME/Library/Application Support/McNeel/Rhinoceros/9.0/MacPlugIns/Stairs.rhp"
-```
+  Rhino 8) and restart Rhino.
+- **Windows:** drag `Stairs.rhp` onto Rhino, or Tools > Options > Plug-ins >
+  Install….
 
 ## Usage
 
-Run the `StairsGen` command and click points along the stair: each click adds a
-corner of a polyline, Enter finishes it and **Undo** removes the last point.
-Every point is kept at the first one's height. To use a flat curve already in
-the model instead, choose the **SelectCurve** option, or select the curve before
-running the command; the stair then follows that curve while the settings
-window is open. The settings window opens, and the preview updates in every
-viewport as you change a setting:
+Run `StairsGen` and click points along the stair (Enter to finish), or use
+**SelectCurve** for an existing curve. Adjust the settings, then click
+**Create Stairs**.
 
-- **The curve is the stair's** middle, inner edge or outer edge. **Pick
-  Curve** takes another curve; **Flip Direction** makes the stair climb from
-  the other end.
-- **Steps**: the total height (or **Measure** it from two points, or
-  **Autoconfigure** everything from it), the number of steps or the step
-  height, the tread depth and its rule, the stair width and the pyramid
-  narrowing.
-- **Landings**: rest steps at any step, and whether those in corners are
-  square.
-- **Structure**: a slab with its depth, or planks with their thickness, and
-  the step numbers. **Corners sharper than 60°**: Sharp or Rounded.
-- **Railing**: none, glass, metal or concrete, on which side and how high.
+## Build
 
-**Create Stairs** adds the stair to the model as one group. The settings are
-remembered for the next time.
+Needs the .NET SDK 7 or later.
 
-## Development
+```bash
+cd src/StairsPlugin && dotnet build -c Release
+```
 
-- `src/StairsPlugin/Core` holds the geometry. It is pure RhinoCommon with no
-  document access.
-  - `StairLayout` lays out the steps, the corner zones and the tread depths.
-  - `StairGeometry` builds treads, slabs and step numbers.
-  - `RailBuilder` builds the railings.
-- `src/StairsPlugin/UI` holds the settings dialog, the curve input and the
-  preview display.
-- The dialog's picture buttons are SVGs in `src/StairsPlugin/assets/stairs`
-  and `assets/railings`, each with a dark-theme version; `tools/make_stair_icons.py`
-  draws the stair ones. The button icons in `assets/icons` come from
-  `tools/make_icons.py`.
+Output: `src/StairsPlugin/bin/Release/StairsPlugin.dll`. Rename it to
+`Stairs.rhp` to install it.
 
-### Regression tests
+## Tests
 
-The tests run inside a running Rhino through its script server
-(`StartScriptServer` in Rhino, plus the `rhinocode` CLI that ships with it):
+With Rhino running and `StartScriptServer` on:
 
 ```bash
 tests/run_tests.sh
 ```
 
-This builds the Debug DLL, runs `tests/test_geometry.py` in Rhino, prints
-PASS or FAIL per scenario, and exits non-zero on any failure. It adds nothing
-to the open document. Two variants:
-
-- `tests/run_tests.sh path/to/Some.dll` tests another build.
-- `tests/run_tests.sh "" corner` runs only scenarios whose name contains
-  "corner".
-
-The suite builds each scenario three times: in metres with a 1 mm and with a
-1 cm tolerance, and in millimetres. It covers
-straight lines, arcs (left, right, beyond 180°), freeform curves with bends
-tighter than the stair, polylines with 60°, 90°, 135°, 150°, 160° and 165°
-corners for every curve role (sharp and rounded), corners too sharp to build,
-U-turns, rest steps and square corner landings, flip, every depth mode,
-Autoconfigure, pyramid widths, all railing types including the concrete
-balusters, and the overflow warning. For each scenario it checks that:
-
-- slabs, planks and railings are valid closed solids or valid breps;
-- treads tile the stair without overlaps or gaps;
-- no tread's average depth is below 18 cm;
-- the depth rule holds (comfort rule, custom depth, or fitted to the curve
-  end);
-- pyramid steps have the right width and stay snapped to the chosen side;
-- only the expected warnings appear.
-
-`rhinocode script` silently ignores script paths that contain a space, so
-`run_tests.sh` runs a copy of the test script from `/tmp`.
+It runs every scenario in metres, millimetres and inches, and checks for valid
+solids, treads that tile without gaps or overlaps, and the expected warnings.
+`tests/run_tests.sh "" corner` runs only scenarios named with "corner".
 
 ## License
 
-StairsGen is released under the [MIT License](LICENSE). It runs on RhinoCommon,
-which Rhino provides under McNeel's own terms, and uses Eto.Forms (BSD-3-Clause)
-for its dialog; neither is included in this repository.
+[MIT](LICENSE). RhinoCommon (McNeel) and Eto.Forms (BSD-3-Clause) are not
+included.
