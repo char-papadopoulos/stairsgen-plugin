@@ -21,18 +21,18 @@ namespace Stairs.Commands
             options.MinAverageDepth = 18 * cm;
             options.MinRiserHeight = 12 * cm;
             options.MaxRiserHeight = 20 * cm;
-            options.MinStepWidth = 30 * cm;
+            options.MinStepWidth = UI.Units.Default(doc, 30, 12);
             options.AbsoluteTolerance = doc.ModelAbsoluteTolerance;
-            options.RailInset = 4 * cm;
-            options.GlassThickness = 1.2 * cm;
-            options.MetalTubeDiameter = 5 * cm;
-            options.MetalBarDiameter = 2 * cm;
-            options.PostDiameter = 4 * cm;
-            options.PostSpacing = 110 * cm;
-            options.RailCementThickness = 10 * cm;
-            options.RailWallGap = 10 * cm;
-            options.BalusterDiameter = 3 * cm;
-            options.BalusterSpacing = 30 * cm;
+            options.RailInset = UI.Units.Default(doc, 4, 1.5);
+            options.GlassThickness = UI.Units.Default(doc, 1.2, 0.5);
+            options.MetalTubeDiameter = UI.Units.Default(doc, 5, 2);
+            options.MetalBarDiameter = UI.Units.Default(doc, 2, 0.75);
+            options.PostDiameter = UI.Units.Default(doc, 4, 1.5);
+            options.PostSpacing = UI.Units.Default(doc, 110, 48);
+            options.RailCementThickness = UI.Units.Default(doc, 10, 4);
+            options.RailWallGap = UI.Units.Default(doc, 10, 4);
+            options.BalusterDiameter = UI.Units.Default(doc, 3, 1.25);
+            options.BalusterSpacing = UI.Units.Default(doc, 30);
             options.NumberStyle = doc.DimStyles.Current;
 
             // the stair's outer, inner or mid line

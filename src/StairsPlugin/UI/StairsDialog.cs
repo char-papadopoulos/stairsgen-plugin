@@ -57,33 +57,36 @@ namespace Stairs.UI
         private readonly Dictionary<int, ToggleButton> _railButtons = new Dictionary<int, ToggleButton>();
         private readonly Dictionary<bool, ToggleButton> _cornerButtons = new Dictionary<bool, ToggleButton>();
 
-        private readonly NumericStepper _height = new NumericStepper();
-        private readonly NumericStepper _stepHeight = new NumericStepper();
-        private readonly NumericStepper _width = new NumericStepper();
+        private readonly LengthBox _height = new LengthBox();
+        private readonly LengthBox _stepHeight = new LengthBox();
+        private readonly LengthBox _width = new LengthBox();
         private readonly CheckBox _pyramid = new CheckBox { Text = "Narrow each step by" };
-        private readonly NumericStepper _pyramidStep = new NumericStepper();
+        private readonly LengthBox _pyramidStep = new LengthBox();
         private readonly DropDown _pyramidAlign = new DropDown { Width = FieldWidth + 24 };
-        private readonly NumericStepper _depth = new NumericStepper();
+        private readonly LengthBox _depth = new LengthBox();
         private readonly NumericStepper _steps = new NumericStepper { MinValue = 1, MaxValue = 999, DecimalPlaces = 0, Increment = 1, Width = FieldWidth };
-        private readonly DropDown _depthMode = new DropDown { Width = ChoiceWidth - FieldWidth - 6 };
         private readonly Label _riserInfo = new Label { TextColor = Colors.Gray, VerticalAlignment = VerticalAlignment.Center };
         private string _info = ""; // shown in the status area when there are no warnings
-        private readonly NumericStepper _thickness = new NumericStepper();
+        private readonly LengthBox _thickness = new LengthBox();
         private readonly Label _thicknessLabel = new Label { Text = "Slab depth", VerticalAlignment = VerticalAlignment.Center };
         private readonly CheckBox _showNumbers = new CheckBox { Text = "Step numbers", Checked = true, ToolTip = "Puts each step's number on its tread." };
         private readonly NumericStepper _restNumber = new NumericStepper { MinValue = 1, DecimalPlaces = 0, Increment = 1, Value = 1, Width = 64 };
         private readonly CheckBox _restCustomDepth = new CheckBox { Text = "Depth" };
-        private readonly NumericStepper _restDepth = new NumericStepper { Enabled = false };
+        private readonly LengthBox _restDepth = new LengthBox { Enabled = false };
         private readonly ListBox _restList = new ListBox { Size = new Size(ChoiceWidth - 28, 62) };
         private readonly Button _removeRest = new Button { Text = "Remove", Enabled = false };
-        private readonly CheckBox _squareLandings = new CheckBox
+        private readonly CheckBox _cornerLandings = new CheckBox
         {
-            Text = "Square landings at corners",
-            ToolTip = "A rest step that reaches a sharp corner fills the whole corner, with its edges square to the "
-                    + "flights before and after it, instead of following the winder fan.",
+            Text = "Landings at corners",
+            ToolTip = "Every corner of the curve gets a landing, square to the flights before and after it: the step "
+                    + "that would run into the corner becomes the landing. Corners close together, such as the two "
+                    + "corners of a U-turn, share one landing. Smooth bends, as on spiral and oval stairs, keep their "
+                    + "steps. Unchecked, corners get winders.",
         };
+        private readonly Button _pickCorners = new Button { Text = "Pick Corners…", ToolTip = "Click corners to switch them between a landing and winders." };
+        private readonly DropDown _extraCurve = new DropDown { Width = ChoiceWidth - FieldWidth - 6 };
         private readonly DropDown _railSide = new DropDown { Width = FieldWidth + 24 };
-        private readonly NumericStepper _railHeight = new NumericStepper();
+        private readonly LengthBox _railHeight = new LengthBox();
         private readonly CheckBox _livePreview = new CheckBox { Text = "Live preview", Checked = true, Width = 104 }; // wider than it asks for: macOS rounds its measured 97.5 down and cuts the label
         private static readonly Color WarningColor = Color.FromArgb(230, 150, 50);
         private readonly Label _status = new Label
@@ -95,8 +98,6 @@ namespace Stairs.UI
             TextColor = WarningColor,
         };
         private readonly double _cm; // one centimetre in model units
-        private readonly int _decimals; // decimals shown for lengths in model units
-        private readonly System.Globalization.NumberFormatInfo _numberFormat = FieldNumberFormat();
 
         private TableLayout _settings;   // the setting sections inside the scroll area
         private Scrollable _settingsScroll;
@@ -121,7 +122,7 @@ namespace Stairs.UI
             _o.Curve = curve;
             _curveId = curveId;
             _cm = RhinoMath.UnitScale(UnitSystem.Centimeters, doc.ModelUnitSystem);
-            _decimals = Math.Max(0, (int)Math.Round(-Math.Log10(_cm)));
+            _o.FormatLength = v => Units.Format(doc, v);
 
             Title = "Stairs";
             Resizable = true; // lets the user adjust it where the screen is small; the content scrolls
@@ -309,22 +310,15 @@ namespace Stairs.UI
         }
 
         /// <summary>Length field in model units, with limits and steps given in centimetres.</summary>
-        private void SetupLength(NumericStepper n, double minCm, double incrementCm)
-        {
-            n.MinValue = minCm * _cm;
-            n.Increment = incrementCm * _cm;
-            n.DecimalPlaces = _decimals;
-            n.MaximumDecimalPlaces = _decimals + 1;
-            n.Width = FieldWidth;
-        }
+        private void SetupLength(LengthBox n, double minCm, double incrementCm) => n.Setup(_doc, minCm, incrementCm, FieldWidth);
 
-        private string Length(double value) => value.ToString("F" + (_decimals + 1), _numberFormat);
+        private string Length(double value) => Units.Format(_doc, value);
 
         /// <summary>
         /// Number format matching the numeric fields. On macOS Eto formats them with the
         /// system locale (e.g. a decimal comma), while .NET in Rhino runs invariant.
         /// </summary>
-        private static System.Globalization.NumberFormatInfo FieldNumberFormat()
+        internal static System.Globalization.NumberFormatInfo FieldNumberFormat()
         {
             var nfi = (System.Globalization.NumberFormatInfo)System.Globalization.CultureInfo.CurrentCulture.NumberFormat.Clone();
             try
@@ -345,16 +339,15 @@ namespace Stairs.UI
 
         private void BuildLayout()
         {
-            string unit = _doc.GetUnitSystemName(true, false, true, true);
-
             _railSide.Items.Add(new ListItem { Text = "Both sides", Tag = (int)Core.RailSide.Both });
             _railSide.Items.Add(new ListItem { Text = "Left", Tag = (int)Core.RailSide.Left });
             _railSide.Items.Add(new ListItem { Text = "Right", Tag = (int)Core.RailSide.Right });
             _railSide.ToolTip = "Seen walking up the stair.";
 
-            _depthMode.Items.Add(new ListItem { Text = "Comfort rule", Tag = (int)Core.TreadDepthMode.Comfort });
-            _depthMode.Items.Add(new ListItem { Text = "Fit to curve", Tag = (int)Core.TreadDepthMode.FitToCurve });
-            _depthMode.Items.Add(new ListItem { Text = "Custom", Tag = (int)Core.TreadDepthMode.Custom });
+            _extraCurve.Items.Add(new ListItem { Text = "Top landing", Tag = (int)Core.ExtraCurve.TopLanding });
+            _extraCurve.Items.Add(new ListItem { Text = "Leave unused", Tag = (int)Core.ExtraCurve.Unused });
+            _extraCurve.ToolTip = "When the steps end before the curve does: the last step, at full height, runs on to the "
+                                + "curve end as a top landing, or the rest of the curve is left unused.";
 
             _pyramidAlign.Items.Add(new ListItem { Text = "Center", Tag = (int)Core.PyramidAlign.Center });
             _pyramidAlign.Items.Add(new ListItem { Text = "Left side", Tag = (int)Core.PyramidAlign.Left });
@@ -383,11 +376,20 @@ namespace Stairs.UI
                 Text = "Autoconfigure",
                 Image = LoadIcon("auto.png"),
                 ToolTip = "From the total height and the curve alone: picks the number of steps by the comfort rule "
-                        + "(riser + tread \u2248 46 cm), fits the treads so the last step ends exactly at the curve end, "
-                        + "and adds a rest step after every " + _o.RestInterval + " steps. With square landings, "
-                        + "it also puts a landing in every sharp corner.",
+                        + "(riser + tread \u2248 " + Length(_o.ComfortSum) + "), fits the treads so the last step ends exactly at the curve end, "
+                        + "and adds a rest step after every " + _o.RestInterval + " steps. "
+                        + "With landings at corners, it also puts a landing in every corner.",
             };
             autoBtn.Click += (s, e) => Autoconfigure();
+
+            var fitBtn = new Button
+            {
+                Text = "Fit to Curve",
+                ToolTip = "Sets the tread depth so the steps fill the curve exactly; flights between corner landings each get their own. "
+                        + "Typing a tread depth fixes it again.",
+            };
+            fitBtn.Click += (s, e) => FitToCurve();
+            _pickCorners.Click += (s, e) => PickCorners();
 
             var addRest = new Button { Text = "Add", Image = LoadIcon("plus.png") };
             addRest.Click += (s, e) => AddRestStep();
@@ -399,10 +401,9 @@ namespace Stairs.UI
             var cancelBtn = new Button { Text = "Close" };
             cancelBtn.Click += (s, e) => Close();
 
-            // the list, with Remove and the corner option beside it
+            // the list, with Remove beside it
             var restSide = new StackLayout { Orientation = Orientation.Vertical, Spacing = 8, HorizontalContentAlignment = HorizontalAlignment.Left };
             restSide.Items.Add(_removeRest);
-            restSide.Items.Add(_squareLandings);
             var restListRow = new StackLayout { Orientation = Orientation.Horizontal, Spacing = 8, VerticalContentAlignment = VerticalAlignment.Top };
             restListRow.Items.Add(_restList);
             restListRow.Items.Add(restSide);
@@ -430,25 +431,27 @@ namespace Stairs.UI
 
             var root = new TableLayout { Padding = new Padding(12, 12, 12, 0), Spacing = new Size(0, 8) };
             root.Rows.Add(new GroupBox { Text = "The curve is the stair's", Content = Beside(Picker(Roles, _roleButtons, v => Choose(() => _o.Role = v)), curveButtons) });
-            root.Rows.Add(Section("Steps (" + unit + ")",
+            root.Rows.Add(Section("Steps",
                 Row(RowLabel("Total height"), _height, measureBtn, autoBtn),
                 Row(RowLabel("Steps"), _steps, _riserInfo),
-                Row(RowLabel("Step height"), _stepHeight),
-                Row(RowLabel("Tread depth"), _depth, _depthMode),
+                Row(RowLabel("Riser height"), _stepHeight),
+                Row(RowLabel("Tread depth"), _depth, fitBtn),
                 Row(RowLabel("Stair width"), _width),
                 Row(RowLabel("Pyramid"), _pyramid, _pyramidStep, _pyramidAlign)));
-            root.Rows.Add(Section("Landings (rest steps)",
-                Row(RowLabel("At step"), _restNumber, _restCustomDepth, _restDepth, addRest),
+            root.Rows.Add(Section("Landings",
+                Row(RowLabel("Corners"), _cornerLandings, _pickCorners),
+                Row(RowLabel("Extra curve"), _extraCurve),
+                Row(RowLabel("Rest step at"), _restNumber, _restCustomDepth, _restDepth, addRest),
                 new TableRow(RowLabel(""), new TableCell(restListRow, true))));
             // structure and the sharp-corner choice share a row, so the window stays as short
-            var structureBox = new GroupBox { Text = "Structure (" + unit + ")", Content = Beside(Picker(Structures, _structureButtons, v => Choose(() => _o.Structure = v)), structureSide) };
+            var structureBox = new GroupBox { Text = "Structure", Content = Beside(Picker(Structures, _structureButtons, v => Choose(() => _o.Structure = v)), structureSide) };
             var cornerPictures = new TableLayout { Padding = new Padding(4, 2, 4, 4) };
             cornerPictures.Rows.Add(Picker(Corners, _cornerButtons, v => Choose(() => _o.RoundSharpCorners = v)));
             var cornersBox = new GroupBox { Text = "Corners sharper than 60°", Content = cornerPictures };
             var structureRow = new TableLayout { Spacing = new Size(8, 0) };
             structureRow.Rows.Add(new TableRow(new TableCell(structureBox, true), new TableCell(cornersBox, false)));
             root.Rows.Add(structureRow);
-            root.Rows.Add(new GroupBox { Text = "Railing (" + unit + ")", Content = Beside(Picker(Railings, _railButtons, ChooseRailing), railSide) });
+            root.Rows.Add(new GroupBox { Text = "Railing", Content = Beside(Picker(Railings, _railButtons, ChooseRailing), railSide) });
 
             // The settings scroll; the status line and the buttons stay in view below them, so
             // a window limited by the screen (high resolution, large display scaling) loses nothing.
@@ -463,7 +466,6 @@ namespace Stairs.UI
             frame.Rows.Add(_bottom);
             Content = frame;
 
-            _depthMode.SelectedIndexChanged += (s, e) => { _depth.Enabled = DepthMode == Core.TreadDepthMode.Custom; Rebuild(); };
             _steps.ValueChanged += (s, e) => StepsChanged();
             _restCustomDepth.CheckedChanged += (s, e) => { _restDepth.Enabled = _restCustomDepth.Checked == true; };
             _restList.SelectedIndexChanged += (s, e) => { _removeRest.Enabled = _restList.SelectedIndex >= 0; };
@@ -473,10 +475,16 @@ namespace Stairs.UI
             _pyramid.CheckedChanged += (s, e) => { PyramidChanged(); Rebuild(); };
             _pyramidStep.ValueChanged += (s, e) => Rebuild();
             _pyramidAlign.SelectedIndexChanged += (s, e) => Rebuild();
-            _depth.ValueChanged += (s, e) => Rebuild();
+            _depth.ValueChanged += (s, e) =>
+            {
+                if (_suspend) return;
+                _o.DepthMode = Core.TreadDepthMode.Custom; // a typed depth is kept as it is
+                Rebuild();
+            };
             _thickness.ValueChanged += (s, e) => Rebuild();
             _showNumbers.CheckedChanged += (s, e) => Rebuild();
-            _squareLandings.CheckedChanged += (s, e) => Rebuild();
+            _cornerLandings.CheckedChanged += (s, e) => { _pickCorners.Enabled = _cornerLandings.Checked == true; Rebuild(); };
+            _extraCurve.SelectedIndexChanged += (s, e) => Rebuild();
             _railHeight.ValueChanged += (s, e) => Rebuild();
             _railSide.SelectedIndexChanged += (s, e) => Rebuild();
             _livePreview.CheckedChanged += (s, e) =>
@@ -598,12 +606,12 @@ namespace Stairs.UI
             _pyramidStep.Value = _o.PyramidStep;
             SelectByTag(_pyramidAlign, (int)_o.PyramidAlign);
             PyramidChanged();
-            SelectByTag(_depthMode, (int)_o.DepthMode);
             _depth.Value = _o.DepthOverride;
-            _depth.Enabled = _o.DepthMode == Core.TreadDepthMode.Custom;
             _steps.Value = StepCount();
             _showNumbers.Checked = _o.ShowNumbers;
-            _squareLandings.Checked = _o.SquareLandings;
+            _cornerLandings.Checked = _o.LandingsAtCorners;
+            _pickCorners.Enabled = _o.LandingsAtCorners;
+            SelectByTag(_extraCurve, (int)_o.ExtraCurve);
             _railHeight.Value = _o.RailHeight;
             _restDepth.Value = _o.Width;
             SelectByTag(_railSide, (int)(_o.Railing == Core.RailSide.None ? Core.RailSide.Both : _o.Railing));
@@ -627,13 +635,17 @@ namespace Stairs.UI
             _o.Pyramid = _pyramid.Checked == true;
             _o.PyramidStep = _pyramidStep.Value;
             _o.PyramidAlign = (Core.PyramidAlign)SelectedIndexTag(_pyramidAlign);
-            _o.DepthMode = DepthMode;
-            if (_o.DepthMode == Core.TreadDepthMode.Custom)
-                _o.DepthOverride = _depth.Value; // otherwise the field shows the computed depth
+            if (_o.DepthMode != Core.TreadDepthMode.FitToCurve)
+            {
+                _o.DepthMode = Core.TreadDepthMode.Custom;
+                _o.DepthOverride = _depth.Value; // fitted treads: the field shows the fitted depth
+            }
             if (_o.Structure == Core.StairStructure.Slab) _o.SlabThickness = _thickness.Value;
             else _o.PlankThickness = _thickness.Value;
             _o.ShowNumbers = _showNumbers.Checked == true;
-            _o.SquareLandings = _squareLandings.Checked == true;
+            _o.LandingsAtCorners = _cornerLandings.Checked == true;
+            _o.SquareLandings = _o.LandingsAtCorners; // rest steps at a corner fill it too
+            _o.ExtraCurve = (Core.ExtraCurve)SelectedIndexTag(_extraCurve);
             if (_o.Railing != Core.RailSide.None) _o.Railing = (Core.RailSide)SelectedIndexTag(_railSide);
             _o.RailHeight = _railHeight.Value;
         }
@@ -671,8 +683,6 @@ namespace Stairs.UI
             }
         }
 
-        private Core.TreadDepthMode DepthMode => (Core.TreadDepthMode)SelectedIndexTag(_depthMode);
-
         /// <summary>Number of steps the layout derives from the total and desired step height.</summary>
         private int StepCount()
         {
@@ -691,6 +701,57 @@ namespace Stairs.UI
                 _stepHeight.Value = _height.Value / n;
                 _suspend = false;
             }
+            Rebuild();
+        }
+
+        /// <summary>Sets the tread depth so the steps fill the curve; typing a depth fixes it again.</summary>
+        private void FitToCurve()
+        {
+            SyncOptions();
+            _o.DepthMode = Core.TreadDepthMode.FitToCurve;
+            Rebuild();
+        }
+
+        /// <summary>
+        /// Click corners to switch them between a landing and winders; the preview follows each
+        /// click. Enter ends.
+        /// </summary>
+        private void PickCorners()
+        {
+            SyncOptions();
+            Core.StairLayout layout;
+            try { layout = Core.StairLayout.Compute(_o); }
+            catch (Exception) { return; }
+            if (layout.Turns.Count == 0)
+            {
+                ShowWarning("The curve has no corners to pick: landings go at its corners, not on smooth bends.");
+                return;
+            }
+            Visible = false;
+            try
+            {
+                while (true)
+                {
+                    var gp = new Rhino.Input.Custom.GetPoint();
+                    gp.SetCommandPrompt("Click a corner to switch it between a landing and winders. Press Enter when done");
+                    gp.AcceptNothing(true);
+                    gp.Get();
+                    if (gp.CommandResult() != Result.Success || gp.Result() != Rhino.Input.GetResult.Point) break;
+                    var p = gp.Point();
+                    Core.StairTurn nearest = null;
+                    double best = double.MaxValue;
+                    foreach (var t in layout.Turns)
+                    {
+                        double d = Math.Sqrt((p.X - t.Center.X) * (p.X - t.Center.X) + (p.Y - t.Center.Y) * (p.Y - t.Center.Y));
+                        if (d < best) { best = d; nearest = t; }
+                    }
+                    if (nearest == null) break;
+                    if (!_o.WinderTurns.Remove(nearest.Index)) _o.WinderTurns.Add(nearest.Index);
+                    Rebuild();
+                    _doc.Views.Redraw();
+                }
+            }
+            finally { Visible = true; }
             Rebuild();
         }
 
@@ -734,15 +795,32 @@ namespace Stairs.UI
             }
             UpdateDerived(layout);
             bool warn = status.Length > 0;
-            if (_info.Length == 0 && layout != null && layout.FlightDepths.Count > 1)
-                _info = "Each flight is fitted to its corner landing: tread depths "
-                      + string.Join(", ", layout.FlightDepths.ConvertAll(Length)) + ".";
+            if (_info.Length == 0 && layout != null) _info = Notes(layout);
             _status.Text = warn ? status : _info;
             _status.TextColor = warn ? WarningColor : Colors.Gray;
             _info = "";
         }
 
-        /// <summary>Step count, riser height, and the computed tread depth while the depth is not custom.</summary>
+        /// <summary>How the stair fits the curve: fitted treads, the top landing, or curve left over.</summary>
+        private string Notes(Core.StairLayout layout)
+        {
+            var notes = new List<string>();
+            if (_o.DepthMode == Core.TreadDepthMode.FitToCurve)
+                notes.Add(layout.FlightDepths.Count > 1
+                    ? "Treads fitted to the curve, flight by flight: " + string.Join(", ", layout.FlightDepths.ConvertAll(Length)) + "."
+                    : "Treads fitted to the curve.");
+            if (layout.TopLanding > 0)
+                notes.Add("Top landing " + Length(layout.TopLanding) + " deep.");
+            else if (layout.Shortfall <= 0)
+            {
+                double left = layout.AvailableLength - layout.UsedLength;
+                if (left > _doc.ModelAbsoluteTolerance * 10)
+                    notes.Add("The stair ends " + Length(left) + " before the curve end.");
+            }
+            return string.Join(" ", notes);
+        }
+
+        /// <summary>Step count, riser height, and the fitted tread depth while the treads are fitted.</summary>
         private void UpdateDerived(Core.StairLayout layout)
         {
             int n = StepCount();
@@ -752,7 +830,7 @@ namespace Stairs.UI
             _suspend = true;
             _steps.Value = n;
             _riserInfo.Text = "risers of " + Length(riser);
-            if (DepthMode != Core.TreadDepthMode.Custom && layout != null && layout.TreadDepth > 0)
+            if (_o.DepthMode == Core.TreadDepthMode.FitToCurve && layout != null && layout.TreadDepth > 0)
                 _depth.Value = layout.TreadDepth;
             _suspend = was;
         }
@@ -776,6 +854,7 @@ namespace Stairs.UI
             }
             _o.Curve = curve;
             _curveId = TrackableId(picked);
+            _o.WinderTurns.Clear(); // the corners picked were the old curve's
             Rebuild();
         }
 
@@ -917,6 +996,7 @@ namespace Stairs.UI
                 SyncOptions();
                 var s = StairsPlugin.Instance.Settings;
                 s.SetInteger("Units", (int)_doc.ModelUnitSystem);
+                s.SetInteger("SettingsVersion", SettingsVersion);
                 s.SetDouble("Height", _o.TotalHeight);
                 s.SetDouble("StepHeight", _o.DesiredStepHeight);
                 s.SetDouble("Width", _o.Width);
@@ -929,7 +1009,8 @@ namespace Stairs.UI
                 s.SetDouble("SlabThickness", _o.SlabThickness);
                 s.SetDouble("PlankThickness", _o.PlankThickness);
                 s.SetBool("ShowNumbers", _o.ShowNumbers);
-                s.SetBool("SquareLandings", _o.SquareLandings);
+                s.SetBool("LandingsAtCorners", _o.LandingsAtCorners);
+                s.SetInteger("ExtraCurve", (int)_o.ExtraCurve);
                 s.SetBool("RoundSharpCorners", _o.RoundSharpCorners);
                 s.SetInteger("RailSide", (int)_o.Railing);
                 s.SetInteger("RailType", (int)_o.RailType);
@@ -942,6 +1023,10 @@ namespace Stairs.UI
             catch (Exception) { /* settings are best-effort */ }
         }
 
+        // 2: corners get landings on their own, and the tread depth is typed or fitted; the rest
+        // steps saved before were mostly how corner landings were made, so they are not kept
+        private const int SettingsVersion = 2;
+
         internal static Core.StairOptions LoadSettings(RhinoDoc doc)
         {
             var o = new Core.StairOptions();
@@ -949,31 +1034,39 @@ namespace Stairs.UI
             {
                 double cm = RhinoMath.UnitScale(UnitSystem.Centimeters, doc.ModelUnitSystem);
                 var s = StairsPlugin.Instance.Settings;
-                // lengths are stored in the units of the document they were saved from
+                // lengths are stored in the units of the document they were saved from; the
+                // defaults are round numbers in either system (17 cm or 7")
                 int saved = s.GetInteger("Units", -1);
                 double k = saved >= 0 ? RhinoMath.UnitScale((UnitSystem)saved, doc.ModelUnitSystem) : 1;
-                double Len(string key, double defaultCm) => s.TryGetDouble(key, out double v) ? v * k : defaultCm * cm;
-                o.TotalHeight = Len("Height", 300);
-                o.DesiredStepHeight = Len("StepHeight", 17);
-                o.Width = Len("Width", 100);
+                double Len(string key, double defaultCm, double defaultInches) =>
+                    s.TryGetDouble(key, out double v) ? v * k : Units.Default(doc, defaultCm, defaultInches);
+                int version = s.GetInteger("SettingsVersion", 1);
+                o.TotalHeight = Len("Height", 300, 120);
+                o.DesiredStepHeight = Len("StepHeight", 17, 7);
+                o.Width = Len("Width", 100, 36);
                 o.Pyramid = s.GetBool("Pyramid", false);
-                o.PyramidStep = Len("PyramidStep", 5);
+                o.PyramidStep = Len("PyramidStep", 5, 2);
                 o.PyramidAlign = (Core.PyramidAlign)s.GetInteger("PyramidAlign", 0);
                 int mode = s.GetInteger("DepthMode", -1);
-                o.DepthMode = mode >= 0 ? (Core.TreadDepthMode)mode
-                    : s.GetBool("AutoDepth", true) ? Core.TreadDepthMode.Comfort : Core.TreadDepthMode.Custom;
-                o.DepthOverride = Len("DepthOverride", 28);
+                if (mode < 0 && s.TryGetBool("AutoDepth", out bool autoDepth)) mode = autoDepth ? (int)Core.TreadDepthMode.Comfort : (int)Core.TreadDepthMode.Custom;
+                o.DepthOverride = Len("DepthOverride", 28, 11);
+                // the comfort rule is no longer a mode: its depth becomes the typed one
+                if (mode == (int)Core.TreadDepthMode.Comfort)
+                    o.DepthOverride = Units.Default(doc, 46 - o.DesiredStepHeight / cm);
+                o.DepthMode = mode == (int)Core.TreadDepthMode.FitToCurve ? Core.TreadDepthMode.FitToCurve : Core.TreadDepthMode.Custom;
                 o.Structure = (Core.StairStructure)s.GetInteger("Structure", (int)o.Structure);
-                o.SlabThickness = Len("SlabThickness", 15);
-                o.PlankThickness = Len("PlankThickness", 4);
+                o.SlabThickness = Len("SlabThickness", 15, 6);
+                o.PlankThickness = Len("PlankThickness", 4, 1.5);
                 o.ShowNumbers = s.GetBool("ShowNumbers", o.ShowNumbers);
-                o.SquareLandings = s.GetBool("SquareLandings", o.SquareLandings);
+                o.LandingsAtCorners = s.GetBool("LandingsAtCorners", true);
+                o.SquareLandings = o.LandingsAtCorners;
+                o.ExtraCurve = (Core.ExtraCurve)s.GetInteger("ExtraCurve", (int)Core.ExtraCurve.TopLanding);
                 o.RoundSharpCorners = s.GetBool("RoundSharpCorners", o.RoundSharpCorners);
                 o.Railing = (Core.RailSide)s.GetInteger("RailSide", (int)o.Railing);
                 o.RailType = (Core.RailType)s.GetInteger("RailType", (int)o.RailType);
-                o.RailHeight = Len("RailHeight", 90);
+                o.RailHeight = Len("RailHeight", 90, 36);
                 o.Role = (Core.CurveRole)s.GetInteger("Role", (int)o.Role);
-                string rs = s.GetString("RestSteps", "");
+                string rs = version >= SettingsVersion ? s.GetString("RestSteps", "") : "";
                 if (!string.IsNullOrEmpty(rs))
                 {
                     foreach (var tok in rs.Split(new[] { '|' }, System.StringSplitOptions.RemoveEmptyEntries))

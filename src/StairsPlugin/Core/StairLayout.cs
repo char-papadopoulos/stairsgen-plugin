@@ -114,6 +114,22 @@ namespace Stairs.Core
         }
     }
 
+    /// <summary>
+    /// Where the stair turns: one sharp corner, or several close enough together that no two
+    /// treads fit between them, such as the two corners of a U-turn. A landing at a turn covers
+    /// all of it, so a U-turn gets one landing across both flights. Turns are the corners a
+    /// landing can fill: smooth bends (spirals, ovals) and corners under MinTurnDegrees are not.
+    /// </summary>
+    public class StairTurn
+    {
+        public int Index;           // 0-based, along the curve; StairOptions.WinderTurns refers to it
+        public double T0, T1;       // walk stations: start of the first corner zone, end of the last
+        public bool Landing;        // a landing fills it (StairOptions.LandingsAtCorners and not a winder turn)
+        public double TurnDegrees;  // the largest corner turn in it, as an absolute angle
+        public Point3d Center;      // on the band's center line, in the middle of the turn (z = curve level)
+        internal bool IsTurn = true; // false: a single zone only a rest step can fill (a bend, a small corner)
+    }
+
     /// <summary>Resolves curve direction, step count, riser height, tread depths and corner zones.</summary>
     public class StairLayout
     {
@@ -130,6 +146,9 @@ namespace Stairs.Core
         public double UsedLength;        // total run consumed on the walking line
         public double AvailableLength;   // walking-line length of the input curve
         public List<double> FlightDepths = new List<double>(); // fitted tread depth per flight, when square corner landings split the stair
+        public List<StairTurn> Turns = new List<StairTurn>(); // where the stair turns, in order along the curve
+        public double TopLanding;        // depth of the last step when it runs on to the curve end (ExtraCurve.TopLanding)
+        public double Shortfall;         // more curve the stair would need, when steps were skipped
         public List<string> Warnings = new List<string>();
 
         /// <summary>Facets of curved treads and of corner fans turn at most this much.</summary>
@@ -150,11 +169,17 @@ namespace Stairs.Core
         double _minGap; // shortest facet the subdivision may create
         bool _roundSharp; // corners over RoundAbove go round the pivot
         readonly List<(double Length, double Param)> _kinks = new List<(double, double)>(); // curve kinks: arc length and parameter
-        readonly Dictionary<int, CornerZone> _cornerLandings = new Dictionary<int, CornerZone>(); // rest step number -> corner it fills
+        readonly Dictionary<int, StairTurn> _cornerLandings = new Dictionary<int, StairTurn>(); // landing step number -> turn it fills
+        readonly List<StairTurn> _spans = new List<StairTurn>(); // turns, and the other corner zones a rest step can fill
+        Func<double, string> _length = v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture); // lengths in messages
+
+        /// <summary>A sharp corner turning at least this much is a turn, where landings go (see StairTurn).</summary>
+        public const double MinTurnDegrees = 30;
 
         public static StairLayout Compute(StairOptions o)
         {
             var layout = new StairLayout();
+            if (o.FormatLength != null) layout._length = o.FormatLength;
             var curve = o.Curve.DuplicateCurve();
             if (o.Flip) curve.Reverse();
             layout.WalkCurve = curve;
@@ -193,7 +218,7 @@ namespace Stairs.Core
             {
                 int first = 2 + (int)Math.Floor(((layout.B - layout.A) - layout._minWidth) / layout._narrowing + 1e-9);
                 layout.Warnings.Add(string.Format(
-                    "Pyramid width: steps {0}+ are kept at the minimum step width {1:0.###}.", first, layout._minWidth));
+                    "Pyramid width: steps {0}+ are kept at the minimum step width {1}.", first, layout._length(layout._minWidth)));
             }
 
             // tread depth
@@ -219,7 +244,8 @@ namespace Stairs.Core
 
             var regular = new double[n + 1];
             for (int i = 1; i <= n; i++) regular[i] = layout.TreadDepth;
-            if (o.SquareLandings) layout.SquareCornerLandings(o, n, endStation, regular);
+            layout.BuildTurns(o, layout.TreadDepth);
+            if (o.SquareLandings || o.LandingsAtCorners) layout.CornerLandings(o, n, endStation, regular);
 
             // treads along the walking line
             double s = layout.StartStation;
@@ -227,16 +253,17 @@ namespace Stairs.Core
             for (int i = 1; i <= n; i++)
             {
                 bool isRest = o.RestStepAt(i, out RestStep rs);
+                bool isLanding = layout._cornerLandings.ContainsKey(i);
                 if (isRest && rs.Depth < 0 && !warnedRest)
                 {
                     layout.Warnings.Add("Rest step depth must be positive; stair width used.");
                     warnedRest = true;
                 }
-                if (!isRest && !warnedMinimum && layout.TreadDepth < o.MinAverageDepth)
+                if (!isRest && !isLanding && !warnedMinimum && layout.TreadDepth < o.MinAverageDepth)
                 {
                     layout.Warnings.Add(string.Format(
-                        "Tread depth {0:0.###} is below the minimum average tread depth {1:0.###}; treads were widened.",
-                        layout.TreadDepth, o.MinAverageDepth));
+                        "Tread depth {0} is below the minimum average tread depth {1}; treads were widened.",
+                        o.FormatLength(layout.TreadDepth), o.FormatLength(o.MinAverageDepth)));
                     warnedMinimum = true;
                 }
                 double depth = layout.TreadDepthAt(o, i, s, regular[i], endStation);
@@ -245,14 +272,15 @@ namespace Stairs.Core
                     // the step that starts at or before the corner would fill it square
                     var before = layout.Steps.FindLast(x => x.S0 <= corner.T0 + tol);
                     layout.Warnings.Add(string.Format(
-                        "Rest step {0} starts past the corner, so its front edge follows the winders.{1}",
-                        i, before == null ? "" : string.Format(" A rest step at {0} would fill the corner square.", before.Number)));
+                        "{0} {1} starts past the corner, so its front edge follows the winders.{2}",
+                        isRest ? "Rest step" : "Landing", i,
+                        before == null ? "" : string.Format(" A rest step at {0} would fill the corner square.", before.Number)));
                 }
 
                 var step = new StepInfo
                 {
                     Number = i,
-                    IsRest = isRest,
+                    IsRest = isRest || isLanding,
                     S0 = s,
                     S1 = s + depth,
                     TopZ = layout.BaseZ + i * layout.RiserHeight,
@@ -262,10 +290,14 @@ namespace Stairs.Core
                 layout.StepOffsets(i, out step.A, out step.B);
                 if (step.S1 > endStation + 1e-9)
                 {
+                    // the run the skipped steps would need, for the message
+                    double need = s;
+                    for (int k = i; k <= n; k++) need += layout.TreadDepthAt(o, k, need, regular[k], endStation);
+                    layout.Shortfall = need - endStation;
                     if (step.S0 < endStation)
                         layout.Warnings.Add(string.Format(
-                            "The staircase needs more run than the curve provides. Steps {0}+ were skipped.",
-                            i));
+                            "The staircase needs more run than the curve provides: {0} more. Steps {1}+ were skipped; shorten the treads, or fit them to the curve.",
+                            o.FormatLength(layout.Shortfall), i));
                     break;
                 }
                 layout.CollectSamples(step);
@@ -274,6 +306,19 @@ namespace Stairs.Core
             }
             if (layout.Steps.Count == 0)
                 layout.Warnings.Add("No steps fit on the curve.");
+
+            // what is left of the curve: the top landing, or left unused
+            if (o.ExtraCurve == ExtraCurve.TopLanding && layout.Steps.Count == n && n > 0 && endStation - s > tol)
+            {
+                var top = layout.Steps[n - 1];
+                top.S1 = endStation;
+                top.Depth = top.S1 - top.S0;
+                layout.TopLanding = top.Depth;
+                top.IsRest = true;
+                top.Samples = new List<double>();
+                layout.CollectSamples(top);
+                s = endStation;
+            }
 
             layout.UsedLength = s - layout.StartStation;
             layout.WarnCrossingCutLines(s);
@@ -320,11 +365,13 @@ namespace Stairs.Core
         double TreadDepthAt(StairOptions o, int i, double s, double regular, double endStation)
         {
             double depth = regular;
-            if (o.RestStepAt(i, out RestStep rs))
+            bool rest = o.RestStepAt(i, out RestStep rs);
+            if (rest) depth = rs.Depth > 0 ? rs.Depth : o.Width;
+            if (_cornerLandings.TryGetValue(i, out var z))
             {
-                depth = rs.Depth > 0 ? rs.Depth : o.Width;
-                // a corner landing runs at least to the square cut line after the corner
-                if (_cornerLandings.TryGetValue(i, out var z)) return Math.Max(s + depth, z.T1) - s;
+                // a landing runs at least to the square cut line after its turn; a rest step
+                // keeps its own depth if that is longer, an automatic landing a stair width
+                return rest ? Math.Max(s + depth, z.T1) - s : Math.Max(z.T1 - s, Math.Max(o.Width, _minGap));
             }
             if (depth <= 0) depth = o.Width;
             StepOffsets(i, out double a, out double b);
@@ -404,36 +451,104 @@ namespace Stairs.Core
         }
 
         /// <summary>
-        /// Square corner landings: a rest step that reaches into a corner zone covers the whole
-        /// zone, so its edges are the square cut lines of the flights before and after the
-        /// corner instead of fanned ones. With fitted treads every flight is fitted on its own,
-        /// to end exactly where its landing starts; with a fixed tread depth the landing
-        /// stretches back along the flight to where the treads before it end. Refitting moves
-        /// the later steps, so a rest step can come to reach a corner it missed before: the
-        /// search repeats until no new landing turns up.
+        /// Groups the corner zones into turns (see StairTurn): sharp corners of at least
+        /// MinTurnDegrees, merged while the gap between them is shorter than two treads of the
+        /// given depth. The other zones (smooth bends, gentle corners) stay spans of their own,
+        /// which only a rest step can fill.
         /// </summary>
-        void SquareCornerLandings(StairOptions o, int n, double endStation, double[] regular)
+        internal void BuildTurns(StairOptions o, double tread)
         {
-            for (int pass = 0; pass < 8; pass++)
+            Turns.Clear();
+            _spans.Clear();
+            double gapMax = 2 * Math.Max(tread, _minGap);
+            var zones = new List<CornerZone>(Corners);
+            zones.Sort((x, y) => x.T0.CompareTo(y.T0));
+            var others = new List<StairTurn>();
+            StairTurn current = null;
+            foreach (var z in zones)
             {
-                // the landings that reach a corner, on the stair as laid out so far
+                double deg = Math.Abs(z.Turn) * 180 / Math.PI;
+                if (z.Smooth || deg < MinTurnDegrees)
+                {
+                    others.Add(new StairTurn { Index = -1, T0 = z.T0, T1 = z.T1, TurnDegrees = deg, IsTurn = false });
+                    continue;
+                }
+                if (current != null && z.T0 - current.T1 < gapMax)
+                {
+                    current.T1 = Math.Max(current.T1, z.T1);
+                    current.TurnDegrees = Math.Max(current.TurnDegrees, deg);
+                    continue;
+                }
+                current = new StairTurn { Index = Turns.Count, T0 = z.T0, T1 = z.T1, TurnDegrees = deg };
+                Turns.Add(current);
+            }
+            double mid = (A + B) / 2;
+            foreach (var t in Turns)
+            {
+                t.Landing = o.LandingsAtCorners && !o.WinderTurns.Contains(t.Index);
+                t.Center = SidePoint((t.T0 + t.T1) / 2, mid, BaseZ);
+                _spans.Add(t);
+            }
+            // a gentle corner or bend inside a turn belongs to the turn
+            foreach (var x in others)
+                if (!Turns.Exists(t => x.T0 >= t.T0 - _minGap && x.T1 <= t.T1 + _minGap)) _spans.Add(x);
+            _spans.Sort((x, y) => x.T0.CompareTo(y.T0));
+        }
+
+        /// <summary>
+        /// Landings at turns. A rest step that reaches into a turn or another corner zone covers
+        /// all of it (StairOptions.SquareLandings), so its edges are the square cut lines of the
+        /// flights before and after it instead of fanned ones; with LandingsAtCorners every
+        /// turn gets a landing on its own: the step that would run into it becomes the landing.
+        /// Rest steps are placed first, then the turns still free. With fitted treads every
+        /// flight is fitted on its own, to end exactly where its landing starts; with a fixed
+        /// tread depth the landing stretches back along the flight to where the treads before
+        /// it end. Refitting moves the later steps, so a step can come to reach a turn it missed
+        /// before: the search repeats until no new landing turns up.
+        /// </summary>
+        void CornerLandings(StairOptions o, int n, double endStation, double[] regular)
+        {
+            bool fit = o.DepthMode == TreadDepthMode.FitToCurve;
+            if (fit && o.LandingsAtCorners)
+            {
+                // a first depth that leaves room for the landings, so the flights come out even
+                var auto = Turns.FindAll(t => t.Landing);
+                double landings = 0;
+                foreach (var t in auto) landings += Math.Max(t.T1 - t.T0, o.Width);
+                double d0 = (AvailableLength - landings) / Math.Max(1, n - auto.Count);
+                if (auto.Count > 0 && d0 > _minGap)
+                    for (int i = 1; i <= n; i++) regular[i] = d0;
+            }
+
+            bool autoPhase = false;
+            for (int pass = 0; pass < 16; pass++)
+            {
+                // the landings that reach a turn, on the stair as laid out so far
                 int found = _cornerLandings.Count;
                 double s = StartStation;
                 for (int i = 1; i <= n && s < endStation; i++)
                 {
                     double d = TreadDepthAt(o, i, s, regular[i], endStation);
-                    if (o.RestStepAt(i, out _) && !_cornerLandings.ContainsKey(i))
+                    if (!_cornerLandings.ContainsKey(i))
                     {
-                        var zone = Corners.Find(z => s < z.T1 - _minGap && s + d > z.T0 + _minGap);
-                        if (zone != null && !_cornerLandings.ContainsValue(zone))
+                        bool rest = o.RestStepAt(i, out _);
+                        var span = _spans.Find(z => !_cornerLandings.ContainsValue(z)
+                            && s < z.T1 - _minGap && s + d > z.T0 + _minGap
+                            && (rest ? o.SquareLandings || z.Landing : autoPhase && z.Landing));
+                        if (span != null)
                         {
-                            _cornerLandings[i] = zone;
+                            _cornerLandings[i] = span;
                             d = TreadDepthAt(o, i, s, regular[i], endStation);
                         }
                     }
                     s += d;
                 }
-                if (_cornerLandings.Count == found || o.DepthMode != TreadDepthMode.FitToCurve) return;
+                bool changed = _cornerLandings.Count != found;
+                if (!changed || !fit)
+                {
+                    if (!autoPhase && o.LandingsAtCorners) { autoPhase = true; continue; }
+                    return;
+                }
 
                 // each flight, up to a corner landing or the curve end, gets its own fitted depth
                 FlightDepths.Clear();
@@ -485,7 +600,8 @@ namespace Stairs.Core
             var plain = Compute(o);
             double walk = plain.AvailableLength;
             double start = plain.StartStation, end = start + walk;
-            var corners = o.SquareLandings ? new List<CornerZone>(plain.Corners) : new List<CornerZone>();
+            var corners = o.LandingsAtCorners ? plain.Turns.FindAll(t => t.Landing)
+                : o.SquareLandings ? new List<StairTurn>(plain._spans) : new List<StairTurn>();
             corners.Sort((x, y) => x.T0.CompareTo(y.T0));
 
             // With square landings every corner gets a landing, which runs from the corner's
@@ -957,8 +1073,8 @@ namespace Stairs.Core
                     double share = Math.Abs(drop.InnerOff) / Math.Max(width, 1e-12);
                     Warnings.Add(string.Format(
                         "A corner with {0:F0}° between its legs is too sharp for a stair this wide so close to the next corner: "
-                        + "its treads overlap. Up to about {1:0.##} wide fits there; or lengthen the legs, or put the curve on the stair's other edge.",
-                        LegsApart(drop.Turn), (b.SC - a.SC) / half / Math.Max(share, 1e-12)));
+                        + "its treads overlap. Up to about {1} wide fits there; or lengthen the legs, or put the curve on the stair's other edge.",
+                        LegsApart(drop.Turn), _length((b.SC - a.SC) / half / Math.Max(share, 1e-12))));
                     zones.Remove(drop);
                     changed = true;
                 }
@@ -1255,8 +1371,8 @@ namespace Stairs.Core
                 if (reach > tol && 1 / k.Length < reach - tol)
                 {
                     Warnings.Add(string.Format(
-                        "The curve bends tighter (radius {0:0.###}) than the stair reaches inward ({1:0.###}); treads there overlap.",
-                        1 / k.Length, reach));
+                        "The curve bends tighter (radius {0}) than the stair reaches inward ({1}); treads there overlap.",
+                        _length(1 / k.Length), _length(reach)));
                     return;
                 }
             }

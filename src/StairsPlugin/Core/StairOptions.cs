@@ -19,6 +19,13 @@ namespace Stairs.Core
         Custom,     // DepthOverride
     }
 
+    /// <summary>What happens to the curve left over past the last step.</summary>
+    public enum ExtraCurve
+    {
+        TopLanding, // the last step, at full height, runs on to the curve end
+        Unused,     // the stair stops at its last step
+    }
+
     /// <summary>A rest step (landing). Depth &lt;= 0 means "use stair width".</summary>
     public class RestStep
     {
@@ -67,6 +74,9 @@ namespace Stairs.Core
 
         public System.Collections.Generic.List<RestStep> RestSteps = new System.Collections.Generic.List<RestStep>();
         public bool SquareLandings = true;     // a rest step that reaches a sharp corner fills it, square to both flights
+        public bool LandingsAtCorners = false; // every turn of the curve (see StairLayout.Turns) gets a landing, without a rest step
+        public System.Collections.Generic.HashSet<int> WinderTurns = new System.Collections.Generic.HashSet<int>(); // turns (by index) that keep their winders
+        public ExtraCurve ExtraCurve = ExtraCurve.Unused;
         public bool RoundSharpCorners = false; // corners turning over 120 degrees go round the inner corner instead of ending in a point
 
         public RailSide Railing = RailSide.None;
@@ -85,6 +95,8 @@ namespace Stairs.Core
 
         public double AbsoluteTolerance = 0.01;
 
+        /// <summary>Lengths in messages, e.g. "58 in"; the dialog shows them in the model's units.</summary>
+        public System.Func<double, string> FormatLength = v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
         public bool RestStepAt(int number, out RestStep rs)
         {

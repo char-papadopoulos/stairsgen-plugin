@@ -34,6 +34,8 @@ from Rhino.Geometry import (Point3d, Vector3d, Plane, Arc, ArcCurve, Ellipse, Li
 OUT = "/tmp/stairs_test_result.txt"
 CONFIG = "/tmp/stairs_test_config.json"
 PROFILES = [("m", 1.0, 0.001), ("mm", 1000.0, 0.01), ("m 1cm", 1.0, 0.01)]  # name, length scale from metres, absolute tolerance
+INCH = 0.0254
+INCHES = [("in", 1 / INCH, 0.001)]  # scenarios drawn in inches run in an inch model only (option "inches")
 
 # stair defaults (metres), shared by all scenarios
 WIDTH, STEP_H, COMFORT, SLAB_T, PLANK_T = 1.0, 0.17, 0.46, 0.15, 0.04
@@ -119,6 +121,10 @@ def tight_s():
 #               centroids must lie outside that circle)
 
 OVERFLOW = "needs more run"
+
+def alina_u_turn():
+    """A forum user's switchback, in inches: 212" up, 77" across (two 36" flights 5" apart), 270" back."""
+    return polyline((0, 0), (0, 212 * INCH), (-77 * INCH, 212 * INCH), (-77 * INCH, -58 * INCH))
 
 def build_scenarios():
     scenarios = [
@@ -215,6 +221,28 @@ def build_scenarios():
         ("rest step past the corner", corner(3.5, 90, 3.5), {"rest": [(13, 0.0)]}, {"warn": ["starts past the corner"], "fan_landing": [13]}),
         ("square landing zigzag fit", polyline((0, 0), (0, 3), (2.4, 0.4), (2.4, 6), (6, 6)), {"rest": [(9, 0.0), (15, 0.0)], "mode": "fit", "height": 7.0, "structure": "plank"}, {"square_landing": [9]}),
         ("autoconfigure zigzag without square landings", polyline((0, 0), (0, 3), (2.4, 0.4), (2.4, 6), (6, 6)), {"auto": True, "height": 7.0, "square": False}, {"regular": True}),
+        # landings at corners (the dialog's default): a turn's landing covers all of it, the curve's end is a top landing
+        ("U-turn one landing inches", alina_u_turn(),
+         {"inches": True, "role": "outer", "width": 36 * INCH, "height": 240.8 * INCH, "step_h": 7 * INCH, "depth": 11 * INCH,
+          "landings": True, "extra": "top", "rail": "both", "rail_type": "glass"},
+         {"turn_landings": 1, "top_landing": True, "regular": True}),
+        ("U-turn one landing inches fit", alina_u_turn(),
+         {"inches": True, "role": "outer", "width": 36 * INCH, "height": 240.8 * INCH, "step_h": 7 * INCH, "mode": "fit",
+          "landings": True, "extra": "top", "structure": "plank"},
+         {"turn_landings": 1, "regular": True}),
+        ("U-turn landing metric metal both", polyline((0, 0), (5, 0), (5, 1.2), (0, 1.2)),
+         {"height": 3.4, "landings": True, "extra": "top", "rail": "both", "rail_type": "metal"}, {"turn_landings": 1, "top_landing": True, "regular": True}),
+        ("landings zigzag two turns", polyline((0, 0), (2.5, 0), (2.5, 2), (5, 2)),
+         {"landings": True, "extra": "unused", "depth": 0.28}, {"turn_landings": 2, "regular": True}),
+        ("landing corner picked as winders", corner(3.5, 90, 3.5), {"landings": True, "winders": [0], "depth": 0.28}, {"no_landings": True, "regular": True}),
+        ("spiral gets no automatic landing", arc(2, 270), {"landings": True, "extra": "top", "depth": 0.28}, {"no_landings_but_top": True}),
+        ("top landing straight", line(6), {"depth": 0.28, "extra": "top", "structure": "plank"}, {"top_landing": True, "regular": True}),
+        ("extra curve left unused", line(6), {"depth": 0.28, "extra": "unused"}, {"unused_end": True, "regular": True}),
+        # corners far enough apart for treads between them are two turns, two landings
+        ("autoconfigure two landings", polyline((0, 0), (4, 0), (4, 2.2), (0, 2.2)),
+         {"auto": True, "height": 3.4, "landings": True}, {"turn_landings": 2, "regular": True}),
+        ("autoconfigure U-turn landings", polyline((0, 0), (5, 0), (5, 1.2), (0, 1.2)),
+         {"auto": True, "height": 3.4, "landings": True, "rail": "both", "rail_type": "glass"}, {"turn_landings": 1, "regular": True}),
     ]
     # sharp corners: every role, both turn directions, 60/90/135 degrees, rotating rail types
     for i, (role, deg) in enumerate([(r, d) for r in ("mid", "inner", "outer") for d in (90, -90, 60, -60, 135, -135)]):
@@ -274,7 +302,7 @@ try:
         c.Transform(Transform.Scale(Point3d.Origin, k))
         o.Curve = c
         o.TotalHeight = opt.get("height", 3.0) * k
-        o.DesiredStepHeight = STEP_H * k
+        o.DesiredStepHeight = opt.get("step_h", STEP_H) * k
         o.Width = opt.get("width", WIDTH) * k
         if "pyramid" in opt:
             o.Pyramid = True
@@ -311,6 +339,9 @@ try:
         o.RailType = enum("RailType", opt.get("rail_type", "glass"))
         o.Flip = opt.get("flip", False)
         o.SquareLandings = opt.get("square", True)
+        o.LandingsAtCorners = opt.get("landings", False)
+        o.ExtraCurve = enum("ExtraCurve", {"top": "TopLanding", "unused": "Unused"}[opt.get("extra", "unused")])
+        for t in opt.get("winders", []): o.WinderTurns.Add(t)
         o.RoundSharpCorners = opt.get("round", False)
         o.ShowNumbers = True
         o.NumberStyle = doc.DimStyles.Current
@@ -477,9 +508,35 @@ try:
             end = lay.StartStation + lay.AvailableLength
             if abs(lay_steps[-1].S1 - end) > tol:
                 errors.append("last step ends %.6g before the curve end" % (end - lay_steps[-1].S1))
+        # landings at turns: each fills its whole turn, as one rest step
+        tol_end = max(tol, 1e-9 * k)
+        turns = list(lay.Turns)
+        landing_turns = [t for t in turns if t.Landing]
+        if "turn_landings" in exp:
+            if len(landing_turns) != exp["turn_landings"]:
+                errors.append("%d landing turns, expected %d" % (len(landing_turns), exp["turn_landings"]))
+            for t in landing_turns:
+                hits = [st for st in lay_steps if st.IsRest and st.S0 <= t.T0 + tol and st.S1 >= t.T1 - tol]
+                if len(hits) != 1:
+                    errors.append("turn %d is filled by %d landings, expected one" % (t.Index, len(hits))); break
+                inside = [st.Number for st in lay_steps if st.S1 > t.T0 + tol and st.S0 < t.T1 - tol and st is not hits[0]]
+                if inside: errors.append("steps %s inside the landing of turn %d" % (inside, t.Index)); break
+        if exp.get("no_landings") or exp.get("no_landings_but_top"):
+            rests = [st.Number for st in lay_steps if st.IsRest and not (exp.get("no_landings_but_top") and st.Number == n_total)]
+            if rests: errors.append("unexpected landings %s" % rests)
+        end = lay.StartStation + lay.AvailableLength
+        if exp.get("top_landing") or exp.get("no_landings_but_top"):
+            if len(lay_steps) != n_total or abs(lay_steps[-1].S1 - end) > tol_end:
+                errors.append("the last step ends %.6g before the curve end, expected a top landing" % (end - lay_steps[-1].S1))
+            elif abs(lay.TopLanding - lay_steps[-1].Depth) > tol_end:
+                errors.append("top landing reported %.6g, the last step is %.6g deep" % (lay.TopLanding, lay_steps[-1].Depth))
+        if exp.get("unused_end"):
+            if end - lay_steps[-1].S1 <= tol or lay.TopLanding != 0:
+                errors.append("the curve's end was used, expected it left unused")
+
         # square corner landings: a rest step that fills a corner, from its start to its end
         square = opt.get("square", True)
-        corners = list(lay.Corners) if square else []
+        corners = (landing_turns if opt.get("landings") else list(lay.Corners)) if square else []
         def fills(st, z):
             return st.IsRest and st.S0 <= z.T0 + tol and st.S1 >= z.T1 - tol
         def fills_corner(st):
@@ -558,7 +615,7 @@ try:
 
     for name, curve, opt, exp in build_scenarios():
         if only and not any(f in name for f in only): continue
-        for pname, k, tol in PROFILES:
+        for pname, k, tol in (INCHES if opt.get("inches") else PROFILES):
             t0 = time.time()
             try:
                 errors = check(name, curve, opt, exp, k, tol)
