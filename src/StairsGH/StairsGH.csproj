@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <RootNamespace>Stairs.GH</RootNamespace>
+    <AssemblyName>StairsGen</AssemblyName>
+    <TargetExt>.gha</TargetExt>
+    <Nullable>disable</Nullable>
+    <LangVersion>10</LangVersion>
+    <Version>1.5.0</Version>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Grasshopper brings RhinoCommon with it; both come from Rhino at run time -->
+    <PackageReference Include="Grasshopper" Version="8.35.*" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- the stair geometry is compiled in from the Rhino plug-in's source, so the .gha is one file -->
+    <Compile Include="..\StairsPlugin\Core\*.cs" Exclude="..\StairsPlugin\Core\._*" Link="Core\%(Filename)%(Extension)" />
+    <Compile Remove="**\._*" />
+    <EmbeddedResource Remove="**\._*" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\StairsPlugin\assets\icons\*.png" Exclude="..\StairsPlugin\assets\icons\._*" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

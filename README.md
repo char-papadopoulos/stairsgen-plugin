@@ -1,9 +1,10 @@
 # Stairs for Rhino 8 / 9
 
-**Version 1.4.0**
+**Version 1.5.0**
 
 Draw a curve, set the height, and StairsGen builds the whole staircase: steps,
-structure, step numbers and railings, with a live preview.
+structure, step numbers and railings, with a live preview. Every part is also
+a Grasshopper component.
 
 ![Showcase](images/demo.gif)
 
@@ -24,6 +25,7 @@ structure, step numbers and railings, with a live preview.
 - **Railings**: glass, metal, or concrete with balusters.
 - **Metric or imperial**: fields read and show any unit (`7in`, `18cm`, `6'-8"`).
 - **Follows the curve** while the dialog is open.
+- **Grasshopper components** for every part, in the same package.
 
 | Winders | Curved |
 |:---:|:---:|
@@ -35,14 +37,13 @@ structure, step numbers and railings, with a live preview.
 
 ## Install
 
-Download `Stairs-<version>.zip` from
-[Releases](https://github.com/char-papadopoulos/stairsgen-plugin/releases):
+**Package Manager** (easiest): run `PackageManager`, search **StairsGen**,
+Install. One package installs the Rhino command and the Grasshopper components.
 
-- **macOS:** copy `Stairs.rhp` to
-  `~/Library/Application Support/McNeel/Rhinoceros/9.0/MacPlugIns/` (`8.0` for
-  Rhino 8) and restart Rhino.
-- **Windows:** drag `Stairs.rhp` onto Rhino, or Tools > Options > Plug-ins >
-  Install….
+Or download `Stairs-<version>.zip` from
+[Releases](https://github.com/char-papadopoulos/stairsgen-plugin/releases) and
+follow its `INSTALL.txt`: `Stairs.rhp` goes to Rhino's plug-ins, `StairsGen.gha`
+to Grasshopper's Libraries folder.
 
 ## Usage
 
@@ -50,16 +51,34 @@ Run `StairsGen` and click points along the stair (Enter to finish), or use
 **SelectCurve** for an existing curve. Adjust the settings, then click
 **Create Stairs**.
 
+## Grasshopper
+
+The **StairsGen** tab has one component per part. A **Stair** flows between
+them, so each part can be changed on its own:
+
+| Component | Does |
+|---|---|
+| **Stair** | Curve, height, riser, tread (empty = fit to curve), width, role, flip |
+| **Stair Landings** | Landings or winders at corners, rest steps, extra curve, rounded corners |
+| **Stair Pyramid** | Each step narrower than the one below |
+| **Stair Autoconfigure** | Steps, rests and tread from the height alone |
+| **Stair Structure** | Slab or planks, as solids |
+| **Stair Railing** | Glass, metal or concrete railings |
+| **Step Numbers** | Text and planes, flat on each tread |
+| **Deconstruct Stair** | Each step's outline, height, depth, landing; warnings |
+
+Empty lengths use round defaults in the model's units (17 cm or 7" risers).
+
 ## Build
 
 Needs the .NET SDK 7 or later.
 
 ```bash
-cd src/StairsPlugin && dotnet build -c Release
+tools/package.sh
 ```
 
-Output: `src/StairsPlugin/bin/Release/StairsPlugin.dll`. Rename it to
-`Stairs.rhp` to install it.
+Builds `Stairs.rhp` and `StairsGen.gha` into `dist/`: a zip with both, and a
+`.yak` Package Manager package with both (`yak push` publishes it).
 
 ## Tests
 

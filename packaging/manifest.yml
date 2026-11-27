@@ -1,0 +1,13 @@
+---
+name: StairsGen
+version: VERSION
+authors:
+- haris
+url: https://github.com/char-papadopoulos/stairsgen-plugin
+description: Stairs along a flat curve for Rhino and Grasshopper. The StairsGen command, and Grasshopper components for each part (layout, landings, pyramid, autoconfigure, structure, railings, step numbers).
+icon: icon.png
+keywords:
+- stairs
+- staircase
+- architecture
+- grasshopper

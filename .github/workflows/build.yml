@@ -1,4 +1,4 @@
-# Builds the plug-in on every push and pull request. Pushing a version tag (v1.2.3)
+# Builds the plug-in and its Grasshopper components on every push and pull request. Pushing a version tag (v1.2.3)
 # also publishes a GitHub Release with the packaged plug-in attached.
 name: Build
 
@@ -34,13 +34,16 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        run: dotnet build src/StairsPlugin/StairsPlugin.csproj -c Release -p:Version=${{ steps.version.outputs.version }}
+        run: |
+          dotnet build src/StairsPlugin/StairsPlugin.csproj -c Release -p:Version=${{ steps.version.outputs.version }}
+          dotnet build src/StairsGH/StairsGH.csproj -c Release -p:Version=${{ steps.version.outputs.version }}
 
       - name: Package
         run: |
           name="Stairs-${{ steps.version.outputs.version }}"
           mkdir -p "dist/$name"
           cp src/StairsPlugin/bin/Release/StairsPlugin.dll "dist/$name/Stairs.rhp"
+          cp src/StairsGH/bin/Release/StairsGen.gha "dist/$name/StairsGen.gha"
           cp LICENSE "dist/$name/LICENSE.txt"
           sed "s/VERSION/${{ steps.version.outputs.version }}/" packaging/INSTALL.txt > "dist/$name/INSTALL.txt"
           (cd dist && zip -r "$name.zip" "$name")

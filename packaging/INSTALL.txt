@@ -1,8 +1,12 @@
 Stairs VERSION for Rhino 8 / 9
 ============================
 
-This download contains the plug-in (Stairs.rhp), these instructions and the
-license. The same Stairs.rhp works on macOS and on Windows.
+This download contains the Rhino plug-in (Stairs.rhp), the Grasshopper
+components (StairsGen.gha), these instructions and the license. Both files work
+on macOS and on Windows.
+
+The easiest install is Rhino's Package Manager: run PackageManager, search for
+StairsGen and click Install. It installs both, and updates them.
 
 
 REQUIREMENTS
@@ -18,7 +22,10 @@ INSTALL ON MACOS
 2. Copy Stairs.rhp into this folder (8.0 for Rhino 8, 9.0 for Rhino 9):
    ~/Library/Application Support/McNeel/Rhinoceros/9.0/MacPlugIns/
    (In Finder, choose Go > Go to Folder... and paste the path.)
-3. Restart Rhino.
+3. For the Grasshopper components, copy StairsGen.gha into this folder:
+   ~/Library/Application Support/McNeel/Rhinoceros/9.0/Plug-ins/
+     Grasshopper (b45a29b1-4343-4035-989e-044e8580d9cf)/Libraries/
+4. Restart Rhino.
 
 
 INSTALL ON WINDOWS
@@ -29,6 +36,9 @@ INSTALL ON WINDOWS
    Properties, tick Unblock and click OK.
 3. Start Rhino and drag Stairs.rhp onto the Rhino window.
    (Or choose Tools > Options > Plug-ins > Install... and pick Stairs.rhp.)
+4. For the Grasshopper components, open Grasshopper, choose File > Special
+   Folders > Components Folder, copy StairsGen.gha there (Unblock it too) and
+   restart Rhino.
 
 
 USE
@@ -37,5 +47,9 @@ Run the StairsGen command and click points along the stair (Enter finishes),
 or use its SelectCurve option to pick a flat curve already in the model. The
 PlugInManager command lists Stairs once it is loaded.
 
-To update: close Rhino, replace Stairs.rhp with the new one, and start Rhino
-again.
+In Grasshopper the components are on the StairsGen tab: start with Stair (a
+curve and a height), then add Landings, Pyramid or Autoconfigure, and build its
+Structure, Railing and Step Numbers.
+
+To update: close Rhino, replace Stairs.rhp and StairsGen.gha with the new
+ones, and start Rhino again.

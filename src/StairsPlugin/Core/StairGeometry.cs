@@ -523,7 +523,7 @@ namespace Stairs.Core
             return Brep.CreateFromBox(box);
         }
 
-        static TextEntity MakeNumber(StairLayout layout, StairOptions o, StepInfo step, double a, double b)
+        internal static TextEntity MakeNumber(StairLayout layout, StairOptions o, StepInfo step, double a, double b)
         {
             // on the band's center line, halfway along the tread, so the numbers follow one clean
             // line through straight treads, winders and landings alike (a tread's center of mass
